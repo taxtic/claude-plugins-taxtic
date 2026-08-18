@@ -1,0 +1,811 @@
+{
+  "archivo_origen": "tests/fixtures/conciliacion_fixture.xlsx",
+  "hoja_origen": "Hoja1",
+  "movimientos": [
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 100000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE UNO SPA",
+          "numero_documento": 1001,
+          "requiere_revision": false,
+          "rut_cliente": "765432101",
+          "texto_original_celda": 1001,
+          "tipo_documento": "FACTURA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 100000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 1001,
+            "monto": 100000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "MENSUALIDAD JULIO 26",
+        "fecha": "2026-07-01T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Uno",
+        "n_correlativo": 1,
+        "proveedor_cliente_banco_crudo": "CLIENTE UNO SPA",
+        "rut_banco_crudo": "76543210-1",
+        "saldo_contable": 100000
+      },
+      "descripcion_banco": "MENSUALIDAD JULIO 26",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-01",
+      "fila_origen": 3,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 100000,
+      "movimiento_id": "mov-000003",
+      "nombres_banco": [
+        "CLIENTE UNO SPA"
+      ],
+      "numero_conciliacion": 1,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "765432101"
+      ],
+      "senales_revision": [],
+      "suma_asignaciones": 100000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 30000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE DOS LTDA",
+          "numero_documento": 2001,
+          "requiere_revision": false,
+          "rut_cliente": "771111111",
+          "texto_original_celda": 2001,
+          "tipo_documento": "FACTURA"
+        },
+        {
+          "bloque_indice": 2,
+          "categoria_ingreso": "Ingresos por Servicio de Remuneraciones",
+          "fuente_respaldo": null,
+          "monto_aplicado": 20000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE DOS LTDA",
+          "numero_documento": 2002,
+          "requiere_revision": false,
+          "rut_cliente": "771111111",
+          "texto_original_celda": 2002,
+          "tipo_documento": "FACTURA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 50000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 2001,
+            "monto": 30000
+          },
+          {
+            "bloque_indice": 2,
+            "centro_costo": "Ingresos por Servicio de Remuneraciones",
+            "factura": 2002,
+            "monto": 20000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "MENSUALIDAD JULIO 26",
+        "fecha": "2026-07-02T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Dos",
+        "n_correlativo": 2,
+        "proveedor_cliente_banco_crudo": "CLIENTE DOS LTDA",
+        "rut_banco_crudo": "77111111-1",
+        "saldo_contable": 150000
+      },
+      "descripcion_banco": "MENSUALIDAD JULIO 26",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-02",
+      "fila_origen": 4,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 50000,
+      "movimiento_id": "mov-000004",
+      "nombres_banco": [
+        "CLIENTE DOS LTDA"
+      ],
+      "numero_conciliacion": 2,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "771111111"
+      ],
+      "senales_revision": [],
+      "suma_asignaciones": 50000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 10000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE TRES SPA",
+          "numero_documento": 3001,
+          "requiere_revision": false,
+          "rut_cliente": "782222222",
+          "texto_original_celda": 3001,
+          "tipo_documento": "FACTURA"
+        },
+        {
+          "bloque_indice": 2,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 10000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE TRES SPA",
+          "numero_documento": 3002,
+          "requiere_revision": false,
+          "rut_cliente": "782222222",
+          "texto_original_celda": 3002,
+          "tipo_documento": "FACTURA"
+        },
+        {
+          "bloque_indice": 3,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 10000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE TRES SPA",
+          "numero_documento": 3003,
+          "requiere_revision": false,
+          "rut_cliente": "782222222",
+          "texto_original_celda": 3003,
+          "tipo_documento": "FACTURA"
+        },
+        {
+          "bloque_indice": 4,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 10000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE TRES SPA",
+          "numero_documento": 3004,
+          "requiere_revision": false,
+          "rut_cliente": "782222222",
+          "texto_original_celda": 3004,
+          "tipo_documento": "FACTURA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 40000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 3001,
+            "monto": 10000
+          },
+          {
+            "bloque_indice": 2,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 3002,
+            "monto": 10000
+          },
+          {
+            "bloque_indice": 3,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 3003,
+            "monto": 10000
+          },
+          {
+            "bloque_indice": 4,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 3004,
+            "monto": 10000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "MENSUALIDAD JULIO 26",
+        "fecha": "2026-07-03T00:00:00",
+        "n_cheque_transferencia": "Pago recibido de TRANSBANK S.A.",
+        "n_correlativo": 3,
+        "proveedor_cliente_banco_crudo": "CLIENTE TRES SPA",
+        "rut_banco_crudo": "78222222-2",
+        "saldo_contable": 190000
+      },
+      "descripcion_banco": "MENSUALIDAD JULIO 26",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-03",
+      "fila_origen": 5,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 40000,
+      "movimiento_id": "mov-000005",
+      "nombres_banco": [
+        "CLIENTE TRES SPA"
+      ],
+      "numero_conciliacion": 3,
+      "origen_pago": "TRANSBANK",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "782222222"
+      ],
+      "senales_revision": [],
+      "suma_asignaciones": 40000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 15000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE CUATRO SPA",
+          "numero_documento": 4001,
+          "requiere_revision": false,
+          "rut_cliente": "793333333",
+          "texto_original_celda": "4001 ABONO",
+          "tipo_documento": "FACTURA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 15000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": "4001 ABONO",
+            "monto": 15000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "MENSUALIDAD JULIO 26",
+        "fecha": "2026-07-04T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Cuatro",
+        "n_correlativo": 4,
+        "proveedor_cliente_banco_crudo": "CLIENTE CUATRO SPA",
+        "rut_banco_crudo": "79333333-3",
+        "saldo_contable": 205000
+      },
+      "descripcion_banco": "MENSUALIDAD JULIO 26",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-04",
+      "fila_origen": 6,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 15000,
+      "movimiento_id": "mov-000006",
+      "nombres_banco": [
+        "CLIENTE CUATRO SPA"
+      ],
+      "numero_conciliacion": 4,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "793333333"
+      ],
+      "senales_revision": [],
+      "suma_asignaciones": 15000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 5000,
+          "motivo_revision": "TEXTO_NO_FACTURA",
+          "nombre_cliente": "CLIENTE CINCO SPA",
+          "numero_documento": null,
+          "requiere_revision": true,
+          "rut_cliente": "804444444",
+          "texto_original_celda": "DEVOLVER AL CLIENTE",
+          "tipo_documento": "DESCONOCIDO"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 5000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": "DEVOLVER AL CLIENTE",
+            "monto": 5000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "AJUSTE",
+        "fecha": "2026-07-05T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Cinco",
+        "n_correlativo": 5,
+        "proveedor_cliente_banco_crudo": "CLIENTE CINCO SPA",
+        "rut_banco_crudo": "80444444-4",
+        "saldo_contable": 210000
+      },
+      "descripcion_banco": "AJUSTE",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-05",
+      "fila_origen": 7,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 5000,
+      "movimiento_id": "mov-000007",
+      "nombres_banco": [
+        "CLIENTE CINCO SPA"
+      ],
+      "numero_conciliacion": 5,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "804444444"
+      ],
+      "senales_revision": [
+        {
+          "campo": "asignaciones[1].texto_original_celda",
+          "codigo": "TEXTO_NO_FACTURA",
+          "mensaje": "Texto de factura requiere revision: 'DEVOLVER AL CLIENTE'"
+        }
+      ],
+      "suma_asignaciones": 5000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 1000,
+          "motivo_revision": "TEXTO_NO_FACTURA",
+          "nombre_cliente": "CLIENTE SEIS SPA",
+          "numero_documento": null,
+          "requiere_revision": true,
+          "rut_cliente": "815555555",
+          "texto_original_celda": "AJUSTAR",
+          "tipo_documento": "DESCONOCIDO"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 1000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": "AJUSTAR",
+            "monto": 1000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "AJUSTE",
+        "fecha": "2026-07-06T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Seis",
+        "n_correlativo": 6,
+        "proveedor_cliente_banco_crudo": "CLIENTE SEIS SPA",
+        "rut_banco_crudo": "81555555-5",
+        "saldo_contable": 211000
+      },
+      "descripcion_banco": "AJUSTE",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-06",
+      "fila_origen": 8,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 1000,
+      "movimiento_id": "mov-000008",
+      "nombres_banco": [
+        "CLIENTE SEIS SPA"
+      ],
+      "numero_conciliacion": 6,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "815555555"
+      ],
+      "senales_revision": [
+        {
+          "campo": "asignaciones[1].texto_original_celda",
+          "codigo": "TEXTO_NO_FACTURA",
+          "mensaje": "Texto de factura requiere revision: 'AJUSTAR'"
+        }
+      ],
+      "suma_asignaciones": 1000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 8100,
+          "motivo_revision": "BOLETA_DETECTADA",
+          "nombre_cliente": "CLIENTE SIETE SPA",
+          "numero_documento": 81,
+          "requiere_revision": true,
+          "rut_cliente": "826666666",
+          "texto_original_celda": "BOLETA 81",
+          "tipo_documento": "BOLETA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 8100,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": "BOLETA 81",
+            "monto": 8100
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "PAGO BOLETA",
+        "fecha": "2026-07-07T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Siete",
+        "n_correlativo": 7,
+        "proveedor_cliente_banco_crudo": "CLIENTE SIETE SPA",
+        "rut_banco_crudo": "82666666-6",
+        "saldo_contable": 219100
+      },
+      "descripcion_banco": "PAGO BOLETA",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-07",
+      "fila_origen": 9,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 8100,
+      "movimiento_id": "mov-000009",
+      "nombres_banco": [
+        "CLIENTE SIETE SPA"
+      ],
+      "numero_conciliacion": 7,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "826666666"
+      ],
+      "senales_revision": [
+        {
+          "campo": "asignaciones[1].texto_original_celda",
+          "codigo": "BOLETA_DETECTADA",
+          "mensaje": "Texto de factura requiere revision: 'BOLETA 81'"
+        }
+      ],
+      "suma_asignaciones": 8100
+    },
+    {
+      "advertencias": [
+        {
+          "campo": "nombres_banco[0]",
+          "codigo": "PROVEEDOR_NO_RESUELTO",
+          "mensaje": "PROVEEDOR/CLIENTE llego como #N/A (VLOOKUP externo no resuelto). No es un dato esencial para el movimiento."
+        },
+        {
+          "campo": "asignaciones[1].categoria_ingreso",
+          "codigo": "CATEGORIA_INGRESO_NO_RESUELTA",
+          "mensaje": "La categoria de ingreso (columna CENTRO DE COSTOS) llego como #N/A. No es un dato esencial para el movimiento."
+        }
+      ],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": null,
+          "fuente_respaldo": null,
+          "monto_aplicado": 12000,
+          "motivo_revision": null,
+          "nombre_cliente": null,
+          "numero_documento": 5001,
+          "requiere_revision": false,
+          "rut_cliente": "837777777",
+          "texto_original_celda": 5001,
+          "tipo_documento": "FACTURA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 12000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "#N/A",
+            "factura": 5001,
+            "monto": 12000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "#N/A",
+        "detalle_transaccion": "MENSUALIDAD JULIO 26",
+        "fecha": "2026-07-08T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Ocho",
+        "n_correlativo": 8,
+        "proveedor_cliente_banco_crudo": "#N/A",
+        "rut_banco_crudo": "83777777-7",
+        "saldo_contable": 231100
+      },
+      "descripcion_banco": "MENSUALIDAD JULIO 26",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-08",
+      "fila_origen": 10,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 12000,
+      "movimiento_id": "mov-000010",
+      "nombres_banco": [
+        "#N/A"
+      ],
+      "numero_conciliacion": 8,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "837777777"
+      ],
+      "senales_revision": [],
+      "suma_asignaciones": 12000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 3000,
+          "motivo_revision": null,
+          "nombre_cliente": null,
+          "numero_documento": 6001,
+          "requiere_revision": false,
+          "rut_cliente": null,
+          "texto_original_celda": 6001,
+          "tipo_documento": "FACTURA"
+        },
+        {
+          "bloque_indice": 2,
+          "categoria_ingreso": "Ingresos por Servicio de Remuneraciones",
+          "fuente_respaldo": null,
+          "monto_aplicado": 4000,
+          "motivo_revision": null,
+          "nombre_cliente": null,
+          "numero_documento": 6002,
+          "requiere_revision": false,
+          "rut_cliente": null,
+          "texto_original_celda": 6002,
+          "tipo_documento": "FACTURA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 7000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 6001,
+            "monto": 3000
+          },
+          {
+            "bloque_indice": 2,
+            "centro_costo": "Ingresos por Servicio de Remuneraciones",
+            "factura": 6002,
+            "monto": 4000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "MENSUALIDAD JULIO 26",
+        "fecha": "2026-07-09T00:00:00",
+        "n_cheque_transferencia": "Pago recibido de TRANSBANK S.A.",
+        "n_correlativo": 9,
+        "proveedor_cliente_banco_crudo": "CLIENTE NUEVE SPA / CLIENTE DIEZ SPA",
+        "rut_banco_crudo": "84888888-8 / 85999999-9",
+        "saldo_contable": 238100
+      },
+      "descripcion_banco": "MENSUALIDAD JULIO 26",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-09",
+      "fila_origen": 11,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 7000,
+      "movimiento_id": "mov-000011",
+      "nombres_banco": [
+        "CLIENTE NUEVE SPA",
+        "CLIENTE DIEZ SPA"
+      ],
+      "numero_conciliacion": 9,
+      "origen_pago": "TRANSBANK",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "848888888",
+        "859999999"
+      ],
+      "senales_revision": [
+        {
+          "campo": "ruts_banco",
+          "codigo": "MULTIPLES_RUT_SIN_ASOCIACION_EXPLICITA",
+          "mensaje": "La fila trae 2 RUT distintos y no existe forma estructural de atribuir cada asignacion a un RUT especifico sin un documento de respaldo externo."
+        }
+      ],
+      "suma_asignaciones": 7000
+    },
+    {
+      "advertencias": [],
+      "asignaciones": [
+        {
+          "bloque_indice": 1,
+          "categoria_ingreso": "Ingresos por Plan Premium",
+          "fuente_respaldo": null,
+          "monto_aplicado": 6000,
+          "motivo_revision": null,
+          "nombre_cliente": "CLIENTE DOCE SPA",
+          "numero_documento": 7001,
+          "requiere_revision": false,
+          "rut_cliente": "860000000",
+          "texto_original_celda": 7001,
+          "tipo_documento": "FACTURA"
+        }
+      ],
+      "banco": "BCI",
+      "campos_originales": {
+        "abonos": 6000,
+        "bloques_crudos": [
+          {
+            "bloque_indice": 1,
+            "centro_costo": "Ingresos por Plan Premium",
+            "factura": 7001,
+            "monto": 6000
+          }
+        ],
+        "cargo": 0,
+        "cc": null,
+        "columnas_no_reconocidas": [
+          {
+            "columna": "X",
+            "valor": 999
+          }
+        ],
+        "cuenta_categoria_ingreso": "Ingresos por Plan Premium",
+        "detalle_transaccion": "MENSUALIDAD JULIO 26",
+        "fecha": "2026-07-11T00:00:00",
+        "n_cheque_transferencia": "Transferencia recibida de Cliente Doce",
+        "n_correlativo": 11,
+        "proveedor_cliente_banco_crudo": "CLIENTE DOCE SPA",
+        "rut_banco_crudo": "86000000-0",
+        "saldo_contable": 243600
+      },
+      "descripcion_banco": "MENSUALIDAD JULIO 26",
+      "diferencia": 0,
+      "errores_normalizacion": [],
+      "fecha_pago": "2026-07-11",
+      "fila_origen": 15,
+      "hoja_origen": "Hoja1",
+      "monto_abono": 6000,
+      "movimiento_id": "mov-000015",
+      "nombres_banco": [
+        "CLIENTE DOCE SPA"
+      ],
+      "numero_conciliacion": 11,
+      "origen_pago": "TRANSFERENCIA",
+      "respaldo_diferencia": null,
+      "ruts_banco": [
+        "860000000"
+      ],
+      "senales_revision": [
+        {
+          "campo": "columnas_no_reconocidas[X]",
+          "codigo": "COLUMNA_NO_RECONOCIDA_CON_DATOS",
+          "mensaje": "La columna X no corresponde a ningun campo fijo ni a ningun bloque factura/monto/centro reconocido, pero trae un valor: 999. No se genero ninguna Asignacion a partir de este dato."
+        }
+      ],
+      "suma_asignaciones": 6000
+    }
+  ],
+  "omitidos": [
+    {
+      "bloques": [],
+      "campos_fijos": {
+        "abonos": 0,
+        "cargo": 500,
+        "cc": null,
+        "cuenta_categoria_ingreso": null,
+        "detalle_transaccion": "COMISION BANCARIA",
+        "fecha": "2026-07-10T00:00:00",
+        "n_cheque_transferencia": "Comision mantencion cuenta",
+        "n_correlativo": 10,
+        "proveedor_cliente_banco_crudo": null,
+        "rut_banco_crudo": null,
+        "saldo_contable": 237600
+      },
+      "columnas_no_reconocidas": [],
+      "fila_origen": 12,
+      "hoja_origen": "Hoja1",
+      "motivo": "CARGO_FUERA_DE_ALCANCE"
+    },
+    {
+      "bloques": [],
+      "campos_fijos": {
+        "abonos": 422100,
+        "cargo": 500,
+        "cc": null,
+        "cuenta_categoria_ingreso": null,
+        "detalle_transaccion": null,
+        "fecha": "Total",
+        "n_cheque_transferencia": null,
+        "n_correlativo": null,
+        "proveedor_cliente_banco_crudo": null,
+        "rut_banco_crudo": null,
+        "saldo_contable": 237600
+      },
+      "columnas_no_reconocidas": [],
+      "fila_origen": 13,
+      "hoja_origen": "Hoja1",
+      "motivo": "FILA_TOTAL"
+    },
+    {
+      "bloques": [],
+      "campos_fijos": {
+        "abonos": null,
+        "cargo": null,
+        "cc": null,
+        "cuenta_categoria_ingreso": null,
+        "detalle_transaccion": null,
+        "fecha": null,
+        "n_cheque_transferencia": null,
+        "n_correlativo": null,
+        "proveedor_cliente_banco_crudo": null,
+        "rut_banco_crudo": null,
+        "saldo_contable": null
+      },
+      "columnas_no_reconocidas": [],
+      "fila_origen": 14,
+      "hoja_origen": "Hoja1",
+      "motivo": "FILA_VACIA"
+    }
+  ]
+}

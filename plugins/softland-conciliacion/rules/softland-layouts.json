@@ -1,0 +1,148 @@
+{
+  "_nota": "Perfiles de layout FISICO para export_softland.py. Separado deliberadamente de rules/softland-columns.json (que representa unicamente el significado/posicion documentado por estructura softland.pdf y permanece intacto). Este archivo mapea los campos semanticos de LineaSoftland a posiciones fisicas por PERFIL. Fase 8.8: OFICIAL_61 quedo respaldado por evidencia real directa (archivo de carga vigente + estructura oficial exportada de Softland, ambos coincidentes campo a campo) y pasa a ser el perfil por defecto; OPERATIVO_62 (hipotesis previa basada en captura.csv, Fase 5-8.7) quedo contradicho en varios aspectos fisicos (62 vs 61 columnas, coma vs ';', sin BOM vs con BOM, S/N en 40/41 vs 37/38) y se mantiene disponible solo por historial, sin usarse mientras no se reconcilie esa contradiccion.",
+  "perfil_default": "OFICIAL_61",
+  "tolerancia_diferencia_clp": 0,
+  "perfiles": {
+    "OPERATIVO_62": {
+      "_nota": "Hipotesis previa (Fase 5-8.7) basada en captura.csv: mismo proceso/importador Softland, con una carga real exitosa (Fase 5.2/5.3) -- pero de OTRO contenido contable (compras), nunca de conciliacion bancaria. Formato fisico previamente asumido: CSV, coma, UTF-8 sin BOM, sin encabezado, sin comillas, CRLF entre filas, CRLF final, trailing comma tras la columna 62.",
+      "formato_importador_validado": false,
+      "conciliacion_bancaria_validada": false,
+      "advertencia": "CONTRADICHO EN FASE 8.8: un archivo de carga real vigente en Softland ('SOFTLAND.csv') y la estructura oficial exportada directamente de la pantalla 'Estructura Arch.' de Softland (PDF, 17-08-2026) coinciden entre si en 61 columnas / delimitador ';' / BOM UTF-8 / S-N en posiciones 37-38 -- ninguno de estos hechos coincide con lo que este perfil asumia (62 columnas / coma / sin BOM / S-N en 40-41). Los 5 intentos reales de carga con este perfil (V1-V5, Fase 8 a 8.7) fallaron todos. No usar sin reconciliar antes esta contradiccion con evidencia nueva.",
+      "_nota_estados_validacion": "formato_importador_validado=false (Fase 8.8): no existe ningun intento real exitoso con este perfil exacto; los 5 intentos documentados (V1-V5) fallaron. conciliacion_bancaria_validada=false: sigue sin existir una conciliacion bancaria real de este plugin cargada y validada en Softland con NINGUN perfil.",
+      "total_columnas": 62,
+      "formato_fecha": "DD-MM-AAAA",
+      "valor_relleno_no_utilizado": "",
+      "_nota_valor_relleno": "Cambiado de 0 a '' en Fase 8.4 con evidencia productiva real: captura.csv (33/33 filas, carga real exitosa) deja SIEMPRE vacia cualquier posicion sin dato de negocio, nunca en 0. Este cambio afecta el valor inicial de relleno de posiciones nunca pobladas por construir_fila(). Desde Fase 8.7, BANCO.haber y CLIENTE.debe (el lado de Debe/Haber que nunca aplica a ese tipo_linea, evidenciado 32/32 casos reales en captura.csv) y BANCO.auxiliar (evidenciado 20/20 casos reales) tampoco se mapean para ese tipo_linea, por lo que tambien caen en este relleno vacio -- ver 'posiciones'. Un cero semantico que SI aplique a un tipo_linea (ej. DIFERENCIA_TRANSBANK.debe/haber, sin cambios) sigue serializando '0' normalmente. OFICIAL_61 permanece en 0 y con el mapeo previo (Debe/Haber/Auxiliar en las 3 lineas): no existe evidencia productiva propia de ese perfil.",
+      "_nota_posiciones": "Confirmado por Contabilidad (Fase 7.3): para una linea CLIENTE, Softland exige 'TB' en la posicion 20 (no el tipo de documento) y el tipo de documento de la factura (20) se desplaza a la posicion 24 (Tipo Docto. Referencia); el folio se repite intencionalmente en la posicion 25 (Nro. Docto. Referencia), ademas de la posicion 21. Por eso 'posiciones' esta indexado por tipo_linea: el mismo campo semantico (ej. tipo_docto_conciliacion) puede fisicamente caer en una columna distinta segun si la linea es BANCO o CLIENTE -- eso es una decision de layout, no un cambio de significado del campo.",
+      "_nota_posiciones_tipo_linea": "Fase 8.7 (evidencia real captura.csv, Fase 8.6): 'posiciones' por tipo_linea solo declara los campos semanticos que REALMENTE aplican fisicamente a ese tipo_linea. BANCO nunca usa Haber ni Auxiliar (siempre 0 internamente, por construccion de transform.py -- una linea Banco es siempre debito puro); CLIENTE nunca usa Debe. Al no mapear esas posiciones para ese tipo_linea, construir_fila() nunca las escribe y quedan en el relleno generico ('', ver valor_relleno_no_utilizado) en vez de forzar el 0 interno a texto. La cuadratura semantica (sum(debe)/sum(haber)) sigue calculandose sobre el modelo LineaSoftland, nunca sobre la fila fisica -- este cambio es exclusivamente de representacion fisica, no contable.",
+      "posiciones": {
+        "BANCO": {
+          "cuenta": 1, "debe": 2, "glosa": 4,
+          "tipo_docto_conciliacion": 17, "numero_docto_conciliacion": 18
+        },
+        "CLIENTE": {
+          "cuenta": 1, "haber": 3, "glosa": 4,
+          "auxiliar": 19, "tipo_docto_conciliacion": 20, "numero_documento": 21,
+          "fecha_emision": 22, "fecha_vencimiento": 23, "tipo_documento": 24,
+          "numero_docto_referencia": 25
+        },
+        "DIFERENCIA_TRANSBANK": {
+          "cuenta": 1, "debe": 2, "haber": 3, "glosa": 4, "auxiliar": 19
+        }
+      },
+      "posiciones_catalogo": {
+        "_nota": "Posiciones documentadas del layout operativo que ningun tipo_linea completa actualmente. Por defecto quedan en el valor de relleno, 0 -- salvo las listadas explicitamente en 'valores_catalogo', que llevan un valor fisico literal propio (ver _nota_pendiente).",
+        "numero_documento_desde": 37,
+        "numero_documento_hasta": 38,
+        "numero_agrupacion_comprobante": 39,
+        "graba_detalle_libro": 40,
+        "documento_nulo": 41,
+        "numero_cuota_pago": 62
+      },
+      "valores_catalogo": {
+        "_nota": "Mapa campo_de_posiciones_catalogo -> valor fisico literal, para este flujo (conciliacion bancaria/cobro), en reemplazo del valor de relleno generico (0). Deliberadamente semantico y por-campo (no un booleano 'vacio si/no'): permite expresar tanto vacio ('') como un literal real ('N', 'S') sin cambiar el mecanismo cuando cambie la evidencia. No depende de ningun movimiento_id ni factura especifica.",
+        "graba_detalle_libro": "N",
+        "documento_nulo": ""
+      },
+      "pendiente_validacion_productiva": ["graba_detalle_libro", "documento_nulo"],
+      "_nota_pendiente": "Historial de evidencia productiva real, mov-000003, perfil OPERATIVO_62: V1 (relleno=0, pos.40=0) -> RECHAZADO, error exacto \"El registro 'Graba el detalle de libro (S/N)' es incorrecto. Por favor reviselo.\". V2 (pos.40 vacio) -> RECHAZADO OTRA VEZ, mismo error exacto. V3 (pos.40='N') -> el error de 'Graba el detalle de libro' DESAPARECIO; aparecio un error nuevo y distinto (\"valores no numericos o muy grandes en un campo numerico\"). V4 (relleno generico 0->vacio en el resto del layout, Fase 8.4) -> error real persiste, sin nueva informacion de causa. Fase 8.5 audito bytes reales y descarto delimitador/separador decimal/separador de miles/encoding/CRLF/cantidad de columnas como causa (todos identicos a captura.csv). Fase 8.6 encontro, con evidencia directa de captura.csv (33/33 filas), que el lado de Debe/Haber no usado por una linea (32/32 casos) y el Codigo Auxiliar cuando no aplica (20/20 casos) SIEMPRE son vacios, nunca '0' -- mientras V4 seguia forzando '0' en BANCO.haber, BANCO.auxiliar y CLIENTE.debe. Fase 8.7 corrige esto ajustando 'posiciones' por tipo_linea para no mapear esos 3 campos donde no aplican, dejandolos en el relleno generico vacio -- pendiente de un QUINTO intento real. graba_detalle_libro='N' se MANTIENE como hipotesis (fuertemente respaldada, no cerrada productivamente). No se declara conciliacion_bancaria_validada=true ni 'OPERATIVO_62 totalmente validado' hasta una carga real aceptada de punta a punta. No se generaliza ningun cambio de Fase 8.7 a DIFERENCIA_TRANSBANK ni al perfil OFICIAL_61: no existe evidencia productiva propia sobre ellos."
+    },
+    "OFICIAL_61": {
+      "_nota": "RESPALDADO POR EVIDENCIA REAL (Fase 8.8): un archivo de carga generado por el propio Softland ('SOFTLAND.csv', 42 filas reales de pago a proveedores) fue comparado campo a campo contra la estructura oficial exportada directamente desde la pantalla 'Estructura Arch.' de Softland (PDF fechado 17-08-2026, 'Captura de Movimientos Mensuales') -- coinciden EXACTAMENTE: 61 columnas, delimitador ';', BOM UTF-8, fechas DD/MM/AAAA, sin campo final vacio, S/N en posiciones 37/38 (no 40/41 como asumia OPERATIVO_62). Se reconcilio ademas: el lado de Debe/Haber no usado por una linea SIEMPRE vacio (nunca '0'), y el Codigo Auxiliar cuando no aplica SIEMPRE vacio -- ambos hechos confirman independientemente lo ya encontrado en Fase 8.6/8.7 sobre captura.csv.",
+      "formato_importador_validado": true,
+      "conciliacion_bancaria_validada": true,
+      "_nota_estados_validacion": "formato_importador_validado=true, DOBLEMENTE confirmado: (1) Fase 8.8, un archivo de carga real vigente de otro contenido contable (compras) coincidio estructuralmente; (2) Fase 8.14, EL PROPIO SOFTLAND acepto realmente V10 (SOFTLAND_V10_PRUEBA.csv, generado por ESTE plugin, mov-000003) a traves del Capturador de Transacciones -- 'Paso', sin observaciones de forma/estructura/atributos. conciliacion_bancaria_validada=true DESDE FASE 8.16: Contabilidad confirmo la prueba end-to-end final (mismo caso mov-000003, documento ya liberado y recontabilizable, pipeline ejecutado desde cero con una NUEVA decision humana) con 'esta bien, procede a lo que sigue' -- la transaccion quedo efectivamente contabilizada en Softland. IMPORTANTE -- este true esta ESCOPEADO EXCLUSIVAMENTE al escenario probado: banco BCI, abono/pago de UN cliente, tipo_pago=SIMPLE, una sola factura, diferencia=0, cuenta Banco 10-01-003, cuenta Cliente 10-02-001, perfil OFICIAL_61. NO se extiende automaticamente a: multiples facturas, multiples clientes, TRANSBANK, diferencias, otros bancos, proveedores, cargos, ni ningun otro escenario todavia no probado -- esos siguen sin evidencia productiva propia. No confundir: 'formato_importador_validado=true' es sobre el formato fisico; 'conciliacion_bancaria_validada=true' es sobre ESTE escenario contable especifico.",
+      "_evidencia_v10_fase_8_14": "SOFTLAND_V10_PRUEBA.csv (mov-000003, mismo archivo en dos ubicaciones verificadas byte-identicas): SHA-256 ce7eacf73f8acc8dc5d1095af2fec5e4b379ed0deb9b286bb640b30f61eb5eb1, 324 bytes. Generado en scratchpad/fase8_13/ y copiado a C:\\Users\\claud\\Downloads\\SOFTLAND_V10_PRUEBA.csv. Congelado como golden de formato real aceptado -- NO modificar este archivo. Evidencia fisica confirmada: BANCO 17=TB 18=nro_conciliacion 19=25 vacios; CLIENTE 17-18 vacios, 19=RUT sin DV, 20=TB, 21=folio, 22-23=fecha DD/MM/AAAA, 24=20, 25=folio (repetido); delimitador ';', BOM UTF-8, 61 campos sin trailing delimiter, CRLF, posiciones 37/38='N'/'N'.",
+      "_evidencia_end_to_end_fase_8_16": "Fase 8.15/8.16: pipeline completo (read_excel -> normalize -> validate -> NUEVA aprobacion humana -> transform -> cuadratura -> export OFICIAL_61) ejecutado desde cero para mov-000003 (mismo caso, documento liberado por Contabilidad para poder recontabilizarse). Genero SOFTLAND_PRUEBA_END_TO_END.csv, cargado en Softland real. Contabilidad confirmo explicitamente: 'esta bien, procede a lo que sigue'. Este es el escenario CONFIRMADO por conciliacion_bancaria_validada=true (ver alcance exacto arriba).",
+      "advertencia": "OPERATIVO_62 (62 columnas, coma, sin BOM) fue la hipotesis previa (Fase 5-8.7, basada en captura.csv) y quedo CONTRADICHA por esta evidencia mas fuerte y directa. No asumir todavia que las secciones 1-36/columnas 1-36 (identicas en significado entre ambos perfiles por diseño) estan cerradas productivamente para NUESTRO flujo especifico de conciliacion bancaria -- el archivo de Fase 8.8 es de compras, no de conciliacion.",
+      "total_columnas": 61,
+      "formato_fecha": "DD/MM/AAAA",
+      "delimitador": ";",
+      "con_bom": true,
+      "trailing_delimitador": false,
+      "valor_relleno_no_utilizado": "0",
+      "_nota_valor_relleno": "Fase 8.8: en el archivo real, la mayoria de posiciones numericas no utilizadas son '0' (nunca vacio) -- por eso el relleno generico de este perfil es '0', al reves de OPERATIVO_62 (''). Las posiciones de TEXTO no utilizadas SI son vacias en el archivo real -- se resuelven explicitamente via 'valores_catalogo', no cambiando el relleno generico.",
+      "_nota_posiciones_tipo_linea": "Mismo criterio que Fase 8.7 (aqui doblemente confirmado por el archivo real de Fase 8.8): BANCO nunca usa Haber ni Auxiliar; CLIENTE nunca usa Debe. No mapeados para ese tipo_linea -> quedan en el relleno generico.",
+      "posiciones": {
+        "BANCO": {
+          "cuenta": 1, "debe": 2, "glosa": 4,
+          "tipo_docto_conciliacion": 17, "numero_docto_conciliacion": 18
+        },
+        "CLIENTE": {
+          "cuenta": 1, "haber": 3, "glosa": 4,
+          "auxiliar": 19, "tipo_docto_conciliacion": 20, "numero_documento": 21,
+          "fecha_emision": 22, "fecha_vencimiento": 23, "tipo_documento": 24,
+          "numero_docto_referencia": 25
+        },
+        "DIFERENCIA_TRANSBANK": {
+          "cuenta": 1, "debe": 2, "haber": 3, "glosa": 4, "auxiliar": 19
+        }
+      },
+      "valores_fijos_por_posicion": {
+        "_nota": "Fase 8.9 a 8.13: evidencia real directa del reporte del Capturador de Transacciones de Softland. V6('0')/V7('TB') en BANCO.20/24 y CLIENTE.17: bloqueaban el guardado. V8: vacio solo en la mitad 'Tipo' de cada par (20,24 BANCO; 17 CLIENTE) -- incompleto (Fase 8.11: son pares Tipo+Nro). V9 (Fase 8.12): se vacian tambien las mitades 'Nro' (BANCO.21,25; CLIENTE.18) -- CONFIRMADO REAL en Softland (Fase 8.13): desaparecieron los 3 avisos de Tipo Documento/Tipo Docto Referencia (BANCO) y Documento Conciliacion Bancaria (CLIENTE). Solo quedo el aviso de BANCO.Auxiliar(19) en '0'. V10 (Fase 8.13, HIPOTESIS PENDIENTE): se vacia tambien BANCO.19 -- unico campo de LineaSoftland aun en relleno '0' pendiente de esta serie de pruebas; sin campo 'Nro' pareado en el catalogo oficial (atributo de un solo campo).",
+        "BANCO": {
+          "19": "",
+          "20": "",
+          "21": "",
+          "24": "",
+          "25": ""
+        },
+        "CLIENTE": {
+          "17": "",
+          "18": ""
+        }
+      },
+      "posiciones_catalogo": {
+        "_nota": "Posiciones documentadas que ningun tipo_linea completa actualmente. Por defecto quedan en el relleno generico ('0') -- salvo las de TEXTO listadas en 'valores_catalogo', confirmadas vacias en el archivo real.",
+        "codigo_condicion_venta": 8,
+        "codigo_vendedor": 9,
+        "codigo_ubicacion": 10,
+        "codigo_concepto_caja": 11,
+        "codigo_instrumento_financiero": 12,
+        "codigo_detalle_gasto": 14,
+        "codigo_centro_costo": 16,
+        "correlativo_interno": 26,
+        "graba_detalle_libro": 37,
+        "documento_nulo": 38,
+        "codigo_flujo_efectivo_1": 39,
+        "codigo_flujo_efectivo_2": 41,
+        "codigo_flujo_efectivo_3": 43,
+        "codigo_flujo_efectivo_4": 45,
+        "codigo_flujo_efectivo_5": 47,
+        "codigo_flujo_efectivo_6": 49,
+        "codigo_flujo_efectivo_7": 51,
+        "codigo_flujo_efectivo_8": 53,
+        "codigo_flujo_efectivo_9": 55,
+        "codigo_flujo_efectivo_10": 57,
+        "numero_cuota_pago": 59,
+        "numero_documento_desde": 60,
+        "numero_documento_hasta": 61
+      },
+      "valores_catalogo": {
+        "_nota": "Confirmado campo a campo por 'SOFTLAND.csv' (42 filas reales, Fase 8.8): las posiciones de TEXTO listadas aqui son SIEMPRE vacias cuando no aplican (nunca '0'). graba_detalle_libro='N' es la MISMA hipotesis de Fase 8.2 (nuestro flujo es cobro/conciliacion de cliente, sin detalle de libro que declarar) -- el archivo real usa 'S' pero para un caso de negocio distinto (compras CON detalle de libro real), no es evidencia a favor ni en contra de N/S para nuestro flujo. documento_nulo='N' SI es una correccion directa: el archivo real muestra 'N' literal en las 42 filas, nunca vacio -- a diferencia de lo asumido en OPERATIVO_62 hasta Fase 8.7.",
+        "codigo_condicion_venta": "",
+        "codigo_vendedor": "",
+        "codigo_ubicacion": "",
+        "codigo_concepto_caja": "",
+        "codigo_instrumento_financiero": "",
+        "codigo_detalle_gasto": "",
+        "codigo_centro_costo": "",
+        "correlativo_interno": "",
+        "codigo_flujo_efectivo_1": "",
+        "codigo_flujo_efectivo_2": "",
+        "codigo_flujo_efectivo_3": "",
+        "codigo_flujo_efectivo_4": "",
+        "codigo_flujo_efectivo_5": "",
+        "codigo_flujo_efectivo_6": "",
+        "codigo_flujo_efectivo_7": "",
+        "codigo_flujo_efectivo_8": "",
+        "codigo_flujo_efectivo_9": "",
+        "codigo_flujo_efectivo_10": "",
+        "graba_detalle_libro": "N",
+        "documento_nulo": "N"
+      },
+      "pendiente_validacion_productiva": [],
+      "_nota_pendiente": "documento_nulo='N' CONFIRMADO por evidencia real directa (42/42 filas de SOFTLAND.csv, Fase 8.8). graba_detalle_libro='N' -- inicialmente solo respaldado por analogia con un archivo de OTRO caso de negocio (compras con detalle real, que usa 'S') -- queda tambien CONFIRMADO desde Fase 8.16: V10 (Fase 8.13/8.14) fue aceptado por el Capturador de Transacciones con 'N', y la prueba end-to-end posterior (Fase 8.15/8.16) con el mismo valor termino efectivamente contabilizada segun Contabilidad. Ambos casos vacios (0 pendientes) para el escenario validado (banco BCI, un cliente, SIMPLE, una factura, diferencia 0) -- ver conciliacion_bancaria_validada y su nota de alcance para lo que NO esta cubierto todavia (TRANSBANK, multiples facturas/clientes, otros bancos, proveedores, cargos)."
+    }
+  }
+}

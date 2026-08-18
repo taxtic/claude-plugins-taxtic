@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ResultadoValidacion",
+  "description": "Contrato de salida de validate.py (Fase 2). Toma un Movimiento normalizado como entrada y produce este objeto SEPARADO, sin modificar el Movimiento. No incluye cuentas Softland, Debe/Haber, LineaSoftland ni aprobacion humana -- eso pertenece a fases posteriores (transform.py / aprobacion).",
+  "type": "object",
+  "required": ["movimiento_id", "estado_motor", "tipo_pago", "motivos", "advertencias", "validaciones", "montos"],
+  "properties": {
+    "movimiento_id": { "type": "string" },
+    "estado_motor": {
+      "type": "string",
+      "enum": ["APTO", "REVISION", "ERROR"],
+      "description": "Exclusivamente estos tres valores. No existe APROBADO aqui: la aprobacion humana es una fase posterior y no forma parte de estado_motor."
+    },
+    "tipo_pago": { "type": "string", "enum": ["SIMPLE", "MULTIFACTURA", "TRANSBANK", "DESCONOCIDO"] },
+    "motivos": {
+      "type": "array",
+      "description": "Motivos estructurados que determinan estado_motor por precedencia (ERROR > REVISION > APTO ausente de motivos). Los tests deben apoyarse en codigo/severidad, nunca en el texto de mensaje.",
+      "items": {
+        "type": "object",
+        "required": ["codigo", "severidad", "mensaje", "campo"],
+        "properties": {
+          "codigo": { "type": "string" },
+          "severidad": { "type": "string", "enum": ["ERROR", "REVISION", "INFO"] },
+          "mensaje": { "type": "string" },
+          "campo": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "advertencias": {
+      "type": "array",
+      "description": "Senales informativas que NUNCA cambian estado_motor por si solas (ej. PROVEEDOR_NO_RESUELTO por #N/A). Se propagan desde Movimiento.advertencias tal cual las produjo normalize.py.",
+      "items": {
+        "type": "object",
+        "required": ["codigo", "campo", "mensaje"],
+        "properties": {
+          "codigo": { "type": "string" },
+          "campo": { "type": "string" },
+          "mensaje": { "type": "string" }
+        }
+      }
+    },
+    "validaciones": {
+      "type": "object",
+      "description": "Panel de diagnostico booleano/nullable de checks individuales, para trazabilidad. No es autoritativo por si solo: estado_motor + motivos son la fuente de verdad.",
+      "properties": {
+        "fecha_valida": { "type": "boolean" },
+        "monto_abono_valido": { "type": "boolean" },
+        "cuadratura_exacta": { "type": "boolean" },
+        "respaldo_transbank_valido": { "type": ["boolean", "null"] }
+      }
+    },
+    "montos": {
+      "type": "object",
+      "required": ["monto_abono", "suma_asignaciones", "diferencia", "diferencia_respaldada"],
+      "properties": {
+        "monto_abono": { "type": ["number", "null"] },
+        "suma_asignaciones": { "type": "number" },
+        "diferencia": { "type": "number" },
+        "diferencia_respaldada": { "type": "boolean" }
+      }
+    }
+  }
+}

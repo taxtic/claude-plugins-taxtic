@@ -1,0 +1,29 @@
+{
+  "_nota": "Reglas de normalizacion (consumidas por normalize.py) y de validacion (consumidas por validate.py). Separadas para no hardcodear patrones de texto en Python.",
+  "separador_multivalor": "/",
+  "patrones_no_factura": [
+    "DEVOLVER AL CLIENTE",
+    "AJUSTAR"
+  ],
+  "valores_no_disponibles": ["#N/A"],
+  "campos_no_esenciales_para_movimiento": [
+    "nombres_banco",
+    "categoria_ingreso"
+  ],
+  "campos_esenciales_movimiento": [
+    "fecha_pago",
+    "monto_abono"
+  ],
+  "campos_esenciales_asignacion": [
+    "rut_cliente",
+    "numero_documento",
+    "monto_aplicado"
+  ],
+  "tolerancia_diferencia_clp": 0,
+  "filas_fuera_de_alcance": {
+    "cargo_distinto_de_cero": "CARGO_FUERA_DE_ALCANCE",
+    "fila_total": "FILA_TOTAL",
+    "fila_vacia": "FILA_VACIA",
+    "fila_control_saldo": "FILA_CONTROL_SALDO"
+  }
+}

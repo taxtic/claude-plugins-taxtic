@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Movimiento",
+  "description": "Contrato de salida de normalize.py. No incluye estado_motor (eso lo decide validate.py).",
+  "type": "object",
+  "required": [
+    "movimiento_id", "fila_origen", "hoja_origen", "fecha_pago", "numero_conciliacion",
+    "descripcion_banco", "banco", "origen_pago", "monto_abono", "ruts_banco", "nombres_banco",
+    "asignaciones", "suma_asignaciones", "diferencia", "respaldo_diferencia", "advertencias",
+    "senales_revision", "errores_normalizacion", "campos_originales"
+  ],
+  "properties": {
+    "movimiento_id": { "type": "string" },
+    "fila_origen": { "type": "integer", "minimum": 1 },
+    "hoja_origen": { "type": "string" },
+    "fecha_pago": { "type": ["string", "null"], "format": "date" },
+    "numero_conciliacion": {
+      "description": "Valor crudo de la columna N (C) del Excel. Origen real como Nro. Docto. Conciliacion sigue pendiente de confirmar con Contabilidad; no se transforma ni se reemplaza por otro correlativo.",
+      "type": ["string", "integer", "null"]
+    },
+    "descripcion_banco": { "type": ["string", "null"] },
+    "banco": { "type": "string", "const": "BCI" },
+    "origen_pago": { "type": "string", "enum": ["TRANSFERENCIA", "TRANSBANK", "OTRO", "DESCONOCIDO"] },
+    "monto_abono": { "type": "number" },
+    "ruts_banco": { "type": "array", "items": { "type": "string" } },
+    "nombres_banco": { "type": "array", "items": { "type": ["string", "null"] } },
+    "asignaciones": { "type": "array", "items": { "$ref": "#/definitions/Asignacion" } },
+    "suma_asignaciones": { "type": "number" },
+    "diferencia": { "type": "number", "description": "suma_asignaciones - monto_abono. Dato derivado; su tratamiento contable lo decide una fase futura." },
+    "respaldo_diferencia": {
+      "type": ["object", "null"],
+      "description": "Representacion minima y estructurada de un respaldo verificado por una fase anterior (ingesta/resolucion humana guiada, aun no implementada). validate.py NUNCA abre ni comprueba el documento fuente -- solo confia en esta marca estructural; la verificacion real del respaldo es responsabilidad de esa fase futura. Null en Fase 1/2: read_excel.py y normalize.py siguen sin poblarlo, y eso sigue siendo valido. Un string suelto (contrato anterior a Fase 2.1) ya NO es una forma valida de este campo.",
+      "properties": {
+        "tipo": {
+          "type": "string",
+          "enum": ["TRANSBANK"],
+          "description": "Unico valor reconocido en el MVP. Se puede ampliar en el futuro junto con la logica de validate.py que lo interpreta."
+        },
+        "referencia": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identificador de la fuente/respaldo que resolvio el caso. Debe coincidir exactamente con Asignacion.fuente_respaldo en cada asignacion que ese respaldo resolvio."
+        },
+        "verificado": {
+          "type": "boolean",
+          "description": "Marca estructural de que una fase anterior confirmo este respaldo. NO implica que validate.py haya comprobado ningun archivo externo."
+        }
+      },
+      "required": ["tipo", "referencia", "verificado"]
+    },
+    "advertencias": { "type": "array", "items": { "$ref": "#/definitions/Senal" } },
+    "senales_revision": { "type": "array", "items": { "$ref": "#/definitions/Senal" } },
+    "errores_normalizacion": { "type": "array", "items": { "$ref": "#/definitions/Senal" } },
+    "campos_originales": { "type": "object", "description": "Fila cruda integra tal como la entrego read_excel.py, sin perdida." }
+  },
+  "definitions": {
+    "Asignacion": {
+      "type": "object",
+      "required": [
+        "bloque_indice", "rut_cliente", "nombre_cliente", "categoria_ingreso",
+        "tipo_documento", "numero_documento", "monto_aplicado",
+        "texto_original_celda", "requiere_revision", "motivo_revision", "fuente_respaldo"
+      ],
+      "properties": {
+        "bloque_indice": { "type": "integer", "minimum": 1 },
+        "rut_cliente": {
+          "type": ["string", "null"],
+          "description": "Null cuando la fila trae mas de un RUT y no hay forma estructural de atribuir esta asignacion a uno de ellos (ver senal MULTIPLES_RUT_SIN_ASOCIACION_EXPLICITA en el Movimiento). Nunca se completa por heuristica o posicion."
+        },
+        "nombre_cliente": { "type": ["string", "null"] },
+        "categoria_ingreso": {
+          "type": ["string", "null"],
+          "description": "Contenido de la columna CENTRO DE COSTOS(n) del Excel. No es un Codigo Centro de Costo Softland (columna 16 oficial); es una categoria de ingreso interna TAXTIC."
+        },
+        "tipo_documento": {
+          "type": "string",
+          "enum": ["FACTURA", "BOLETA", "DESCONOCIDO"],
+          "description": "Nombre canonico del contrato. BOLETA sigue requiriendo revision en el MVP (ver requiere_revision/motivo_revision para saber como se detecto)."
+        },
+        "numero_documento": { "type": ["integer", "null"] },
+        "monto_aplicado": { "type": "number" },
+        "texto_original_celda": { "type": ["string", "integer", "null"] },
+        "requiere_revision": { "type": "boolean" },
+        "motivo_revision": {
+          "type": ["string", "null"],
+          "enum": ["TEXTO_NO_FACTURA", "BOLETA_DETECTADA", null]
+        },
+        "fuente_respaldo": {
+          "type": ["string", "null"],
+          "description": "Cuando esta asignacion fue resuelta mediante un respaldo (ej. atribucion RUT/factura en un Movimiento con varios RUT), debe contener exactamente el mismo valor que Movimiento.respaldo_diferencia.referencia. Null en Fase 1/2: nunca se completa por heuristica ni por posicion; solo una fase futura (ingesta/resolucion humana guiada) lo puede poblar."
+        }
+      }
+    },
+    "Senal": {
+      "type": "object",
+      "required": ["codigo", "campo", "mensaje"],
+      "properties": {
+        "codigo": { "type": "string" },
+        "campo": { "type": "string" },
+        "mensaje": { "type": "string" }
+      }
+    }
+  }
+}

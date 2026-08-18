@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LineaSoftland",
+  "description": "Contrato de salida de transform.py (Fase 4). Representa UNA linea logica de la Captura de Movimientos Mensuales de Softland, con vista semantica (cuenta/debe/haber/glosa/...) y vista posicional (campos_1_a_61). No es el formato fisico final: delimitador, encoding, header y CSV/TXT pertenecen a export_softland.py (ver rules/softland-layouts.json para el perfil vigente, OFICIAL_61).",
+  "type": "object",
+  "required": [
+    "movimiento_id", "tipo_linea", "orden", "cuenta", "debe", "haber", "glosa",
+    "auxiliar", "tipo_documento", "numero_documento", "fecha_emision", "fecha_vencimiento",
+    "tipo_docto_conciliacion", "numero_docto_conciliacion", "numero_docto_referencia",
+    "campos_1_a_61", "filas_excel_origen"
+  ],
+  "properties": {
+    "movimiento_id": { "type": "string" },
+    "tipo_linea": { "type": "string", "enum": ["BANCO", "CLIENTE", "DIFERENCIA_TRANSBANK"] },
+    "orden": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1 = BANCO, 2..N = CLIENTE (una por Asignacion, nunca un Banco repetido por factura), ultima opcional = DIFERENCIA_TRANSBANK."
+    },
+    "cuenta": { "type": "string", "description": "Resuelta siempre desde rules/taxtic.json; nunca un literal hardcodeado en transform.py." },
+    "debe": { "type": "number", "minimum": 0 },
+    "haber": { "type": "number", "minimum": 0 },
+    "glosa": { "type": "string" },
+    "auxiliar": {
+      "description": "String (RUT normalizado en CLIENTE, auxiliar fijo en DIFERENCIA_TRANSBANK) o entero 0 cuando el campo no se utiliza operacionalmente (BANCO)."
+    },
+    "tipo_documento": {
+      "description": "'20' (tipo de documento de la factura) en CLIENTE, fisicamente ubicado en la posicion 24 del layout OPERATIVO_62/OFICIAL_61 (Fase 7.3, confirmado por Contabilidad); entero 0 cuando no se utiliza (BANCO, DIFERENCIA_TRANSBANK)."
+    },
+    "numero_documento": {
+      "description": "Numero de factura (Asignacion.numero_documento) en CLIENTE, posicion 21; entero 0 cuando no se utiliza."
+    },
+    "fecha_emision": {
+      "description": "Fecha de pago del Movimiento en formato DD/MM/AAAA, solo en CLIENTE; entero 0 cuando no se utiliza (BANCO, DIFERENCIA_TRANSBANK)."
+    },
+    "fecha_vencimiento": {
+      "description": "Igual a fecha_emision en el MVP (no existe una fecha de vencimiento distinta); entero 0 cuando no se utiliza."
+    },
+    "tipo_docto_conciliacion": {
+      "description": "Marcador de conciliacion 'TB': en BANCO cae en la posicion 17; en CLIENTE cae en la posicion 20 (confirmado por Contabilidad, Fase 7.3 -- mismo campo/significado, distinta posicion fisica segun tipo_linea, resuelta por rules/softland-layouts.json). Entero 0 en DIFERENCIA_TRANSBANK (la Diferencia nunca lleva TB)."
+    },
+    "numero_docto_conciliacion": {
+      "description": "Movimiento.numero_conciliacion solo en BANCO (posicion 18); entero 0 en CLIENTE y DIFERENCIA_TRANSBANK."
+    },
+    "numero_docto_referencia": {
+      "description": "Folio de la factura (Asignacion.numero_documento) REPETIDO, solo en CLIENTE, posicion 25 (Nro. Docto. Referencia) -- repeticion intencional confirmada por Contabilidad (Fase 7.3), no un error de mapeo; entero 0 en BANCO y DIFERENCIA_TRANSBANK."
+    },
+    "campos_1_a_61": {
+      "type": "object",
+      "description": "Debe contener EXACTAMENTE las 61 claves de texto '1'..'61' (ver rules/softland-columns.json para el nombre/tipo oficial de cada columna). Las posiciones no utilizadas operacionalmente para este tipo_linea se completan con el entero 0, aunque el PDF oficial las defina como Texto (ej. columnas 37/38 S/N) -- softland-columns.json conserva el tipo oficial sin modificarse; esta discrepancia queda pendiente de validar en la primera carga real Softland.",
+      "additionalProperties": true
+    },
+    "filas_excel_origen": {
+      "type": "array",
+      "items": { "type": "integer" },
+      "description": "Fila(s) del Excel de origen para trazabilidad. En el MVP siempre es una sola fila (un Movimiento = una fila de conciliacion.xlsx)."
+    }
+  }
+}
