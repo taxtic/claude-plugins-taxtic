@@ -32,17 +32,93 @@ Excel de conciliación
   → read_excel.py       (lectura estructural, sin decidir negocio)
   → normalize.py        (Movimiento + Asignacion[] canónicos)
   → validate.py         (estado_motor: APTO / REVISION / ERROR)
-  → [PARADA OBLIGATORIA — mostrar resumen y esperar decisión humana]
+  → [PARADA OBLIGATORIA — approval.py preparar + revisión humana, esperar decisión literal]
   → approval.py decidir (estado_humano: APROBADO / RECHAZADO, por movimiento)
+  → si RECHAZADO: detener la corrida aquí (no continuar)
   → transform.py        (LineaSoftland[]: BANCO + CLIENTE[] + Diferencia opcional)
   → [verificación de cuadratura: sum(debe) == sum(haber)]
   → export_softland.py --perfil OFICIAL_61
   → [ENTREGA — el usuario carga el CSV manualmente en Softland]
 ```
 
+### Precondición: entorno Python
+
+Antes de ejecutar cualquier script de esta skill, comprobar:
+
+```powershell
+python --version
+python -c "import openpyxl; print(openpyxl.__version__)"
+```
+
+Si cualquiera de los dos falla: **detenerse**, informar al usuario que Python o sus dependencias
+no están disponibles en este entorno, y pedirle que lo resuelva. Nunca improvisar rutas de
+instalación, buscar ejecutables alternativos por el sistema de archivos, ni construir comandos de
+búsqueda extensos para "encontrar" un Python funcional.
+
+### Windows/PowerShell: shell consistente
+
+En Windows, usar **PowerShell de forma consistente durante toda la corrida** — no mezclar sintaxis
+de otra shell dentro de la misma ejecución. PowerShell también usa variables con `$` (ej. `$WD`,
+`$env:TEMP`), así que `$VAR` no es en sí mismo un indicio de Bash. Lo que sí es sintaxis de otra
+shell y debe evitarse en PowerShell:
+- `VAR="valor"` o `export VAR="valor"` (asignación estilo Bash) — usar `$WD = "valor"`.
+- `mkdir -p` — usar `New-Item -ItemType Directory -Path $WD -Force`.
+- `ls -la` — usar `Get-ChildItem` (o su alias `ls`, sin flags de Bash).
+- `&&` para encadenar comandos — usar `;` o líneas separadas, o `if ($?) { ... }` si el segundo
+  comando debe depender del éxito del primero.
+
+### CLI exacta (PowerShell)
+
+```powershell
+$WD = Join-Path $env:TEMP ("softland-conciliacion-" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+New-Item -ItemType Directory -Path $WD -Force | Out-Null
+
+python .\scripts\read_excel.py "C:\ruta\archivo.xlsx" --out "$WD\01_raw.json"
+python .\scripts\normalize.py "$WD\01_raw.json" --banco BCI --out "$WD\02_normalizado.json"
+python .\scripts\validate.py "$WD\02_normalizado.json" --out "$WD\03_validado.json"
+python .\scripts\approval.py preparar "$WD\02_normalizado.json" "$WD\03_validado.json" <movimiento_id> --out "$WD\03b_revision.json"
+```
+
+**PARADA HUMANA OBLIGATORIA** — ver "## 2. Parada obligatoria antes de aprobar" para qué mostrar
+exactamente y qué le falta a `03b_revision.json`. Espera una respuesta **literal** `APROBADO` o
+`RECHAZADO` del usuario; no la des por sentada ni la hardcodees en ningún ejemplo o script.
+
+```powershell
+python .\scripts\approval.py decidir "$WD\02_normalizado.json" "$WD\03_validado.json" <lote_id> <movimiento_id> <decision> "<revisor>" --directorio "$WD"
+```
+
+Si `<decision>` fue `RECHAZADO`: **detener la corrida aquí**. No ejecutar `transform.py` ni
+`export_softland.py` para este movimiento.
+
+Si `<decision>` fue `APROBADO`, continuar:
+
+```powershell
+python .\scripts\transform.py "$WD\02_normalizado.json" "$WD\03_validado.json" <lote_id> --directorio "$WD" --out "$WD\04_lineas.json"
+python .\scripts\export_softland.py "$WD\04_lineas.json" --perfil OFICIAL_61 --out "$WD\05_softland.csv"
+```
+
+Valores que nunca se hardcodean como si fueran de producción:
+- `<movimiento_id>`: se lee del JSON de `normalize.py`/`validate.py` de esa corrida.
+- `<lote_id>`: identificador técnico único de la corrida (ej. derivado del mismo sello de tiempo
+  usado para `$WD`) — se genera una vez por corrida y se **reutiliza exactamente igual** en
+  `approval.py decidir` y en `transform.py`. No se lee de ningún JSON intermedio: es un dato que la
+  propia orquestación de la skill decide al iniciar la corrida, no algo que `read_excel.py`,
+  `normalize.py` ni `validate.py` produzcan.
+- `<revisor>`: identidad de quien aprueba/rechaza. Si la corrida tiene una identidad de usuario ya
+  conocida en ese contexto, úsala; si no, **pregúntala explícitamente al usuario** antes de llamar
+  `approval.py decidir`. Nunca se infiere del sistema operativo ni se inventa un valor de ejemplo.
+
+### Reglas negativas de CLI (evitar errores de invocación)
+
+- **`read_excel.py`**: el Excel es argumento **posicional** (no existe `--archivo`). No acepta
+  `--banco` — ese flag no existe en este script.
+- **`normalize.py`**: `raw_json` es posicional. `--banco` se usa aquí (no en `read_excel.py`).
+- **`export_softland.py`**: `lineas_json` es posicional. `--out` es **obligatorio** (falla sin él).
+  Para este flujo, usar siempre `--perfil OFICIAL_61`.
+
 Ejecutar cada script con `--out <archivo>.json` (nunca importar los módulos entre sí, ni asumir
-estado compartido en memoria) y encadenar los JSON intermedios de un directorio de trabajo nuevo
-por corrida.
+estado compartido en memoria) y encadenar los JSON intermedios del directorio de trabajo `$WD` de
+esa corrida.
 
 ## 1. Estados — dos máquinas de estado independientes
 
@@ -63,13 +139,35 @@ nunca puede quedar `APROBADO` (debe corregirse y volver a pasar por `validate.py
 
 ## 2. Parada obligatoria antes de aprobar
 
-Después de `validate.py`, antes de ejecutar `approval.py decidir`, **muestra siempre** al usuario:
-- el movimiento normalizado (fecha, banco, monto, RUT, cliente, factura(s), monto(s));
-- el resultado de `validate.py` (`estado_motor`, motivos, cuadratura);
-- las líneas contables que se generarían (cuenta, Debe/Haber, glosa) — como previsualización, sin
-  ejecutar `transform.py` todavía (requiere una decisión humana ya registrada).
+Después de `validate.py`, ejecuta `approval.py preparar` (ver bloque CLI arriba). Su JSON de salida
+(`preparar_revision()`) trae: `movimiento_id`, `fecha_pago`, `monto_abono`, `origen_pago`,
+`clientes` (pares rut/nombre), `asignaciones` completas, `suma_asignaciones`, `diferencia`,
+`estado_motor`, `motivos`, `advertencias` y `puede_aprobar`. Úsalo como base — no reconstruyas esos
+campos a mano.
 
-Espera una respuesta explícita tipo `APROBADO` o `RECHAZADO` del usuario antes de continuar. Nunca
+**`approval.py preparar` NO trae todo lo que esta sección exige mostrar.** Verificado directamente
+contra el código (`approval.py:_clientes`/`preparar_revision`): su salida **no incluye** el campo
+`banco` del movimiento, **no incluye** un flag explícito de cuadratura (`validaciones.cuadratura_exacta`
+vive en el JSON de `validate.py`, no se copia a `preparar_revision`), y **no incluye ninguna
+previsualización de líneas contables** (`cuenta`/Debe/Haber/glosa) — `approval.py` nunca calcula
+eso, por diseño ("nunca crea cuentas Softland, no genera Debe/Haber").
+
+Por lo tanto, antes de ejecutar `approval.py decidir`, **muestra siempre** al usuario, combinando
+todo lo anterior con lo que falta — cada dato con su fuente exacta, nunca inferido ni inventado:
+- lo que ya trae `approval.py preparar` (`03b_revision.json`, arriba);
+- `banco`: leer `movimientos[i].banco` en `02_normalizado.json`, donde `movimientos[i].movimiento_id`
+  coincide con el `movimiento_id` de esta revisión — `preparar` no lo trae;
+- la cuadratura explícita: leer `resultados[i].validaciones.cuadratura_exacta` en
+  `03_validado.json`, donde `resultados[i].movimiento_id` coincide con el mismo `movimiento_id`;
+- las líneas contables que se generarían (cuenta, Debe/Haber, glosa) — construidas únicamente a
+  partir de `rules/taxtic.json` (`banco.cuenta` según `banco.codigo`, `cuentas.cliente`,
+  `glosas.banco.un_cliente`/`glosas.banco.multicliente`, `glosas.cliente_normal`/`glosas.cliente_transbank`,
+  regla de auxiliar sin DV) como previsualización determinística manual, **sin ejecutar
+  `transform.py` todavía** (requiere una decisión humana ya registrada, y ningún script de este
+  plugin genera hoy esa previsualización de forma automática).
+
+Espera una respuesta **literal** `APROBADO` o `RECHAZADO` del usuario antes de continuar — no la
+asumas, no la hardcodees en ningún ejemplo o script como si fuera el único resultado posible. Nunca
 reutilices una decisión de una corrida anterior para un movimiento distinto o una nueva ejecución
 del mismo movimiento — cada aprobación es específica de esa corrida.
 
