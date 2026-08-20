@@ -279,6 +279,40 @@ def _verificar_cuadratura(lineas, tolerancia=0):
         )
 
 
+def _construir_lineas(movimiento, resultado_validacion, reglas):
+    """Funcion pura que construye LineaSoftland[] a partir de un Movimiento
+    + ResultadoValidacion. NO valida estado_motor ni estado_humano -- esas
+    guardas viven exclusivamente en transformar_movimiento() (camino normal,
+    exige APROBADO) y en previsualizar_movimiento() (--preview, exige solo
+    APTO). Es la UNICA implementacion de la logica de construccion de
+    lineas: ambos caminos la llaman igual, nunca la reimplementan."""
+    cuenta_banco = _obtener_cuenta_banco(reglas, movimiento.get("banco"))
+    asignaciones = movimiento.get("asignaciones") or []
+    es_transbank = resultado_validacion.get("tipo_pago") == "TRANSBANK"
+
+    lineas = []
+    orden = 1
+
+    glosa_banco = _construir_glosa_banco(reglas, asignaciones)
+    lineas.append(_linea_banco(movimiento, cuenta_banco, glosa_banco, orden))
+    orden += 1
+
+    plantilla_cliente = (
+        reglas["glosas"]["cliente_transbank"] if es_transbank else reglas["glosas"]["cliente_normal"]
+    )
+    for asignacion in asignaciones:
+        lineas.append(_linea_cliente(movimiento, asignacion, reglas, plantilla_cliente, orden))
+        orden += 1
+
+    if es_transbank:
+        lineas.append(_linea_diferencia(movimiento, reglas, orden))
+        orden += 1
+
+    _verificar_cuadratura(lineas, reglas.get("tolerancia_diferencia_clp", 0))
+
+    return lineas
+
+
 def transformar_movimiento(movimiento, resultado_validacion, decision_humana, reglas):
     """Funcion pura. No modifica movimiento, resultado_validacion ni
     decision_humana. Falla explicitamente (TransformError) ante cualquier
@@ -306,31 +340,29 @@ def transformar_movimiento(movimiento, resultado_validacion, decision_humana, re
             "solo un movimiento APROBADO puede transformarse.",
         )
 
-    cuenta_banco = _obtener_cuenta_banco(reglas, movimiento.get("banco"))
-    asignaciones = movimiento.get("asignaciones") or []
-    es_transbank = resultado_validacion.get("tipo_pago") == "TRANSBANK"
+    return _construir_lineas(movimiento, resultado_validacion, reglas)
 
-    lineas = []
-    orden = 1
 
-    glosa_banco = _construir_glosa_banco(reglas, asignaciones)
-    lineas.append(_linea_banco(movimiento, cuenta_banco, glosa_banco, orden))
-    orden += 1
+def previsualizar_movimiento(movimiento, resultado_validacion, reglas):
+    """Modo de solo lectura (--preview). Exige EXCLUSIVAMENTE estado_motor
+    == APTO -- nunca exige, registra ni simula estado_humano == APROBADO.
+    No lee ni escribe aprobaciones-<lote_id>.json (no recibe decision_humana
+    en absoluto). No modifica el movimiento. Llama a la misma
+    _construir_lineas() que transformar_movimiento(): para un mismo
+    (movimiento, resultado_validacion, reglas), el resultado es
+    identico al que producira transformar_movimiento() una vez que exista
+    una DecisionHumana APROBADO -- no hay una segunda implementacion de la
+    logica contable que pueda divergir."""
+    _validar_consistencia_ids(movimiento, resultado_validacion, None)
 
-    plantilla_cliente = (
-        reglas["glosas"]["cliente_transbank"] if es_transbank else reglas["glosas"]["cliente_normal"]
-    )
-    for asignacion in asignaciones:
-        lineas.append(_linea_cliente(movimiento, asignacion, reglas, plantilla_cliente, orden))
-        orden += 1
+    if resultado_validacion.get("estado_motor") != "APTO":
+        raise TransformError(
+            "ESTADO_MOTOR_NO_APTO",
+            f"estado_motor={resultado_validacion.get('estado_motor')!r}; "
+            "solo un movimiento APTO puede previsualizarse.",
+        )
 
-    if es_transbank:
-        lineas.append(_linea_diferencia(movimiento, reglas, orden))
-        orden += 1
-
-    _verificar_cuadratura(lineas, reglas.get("tolerancia_diferencia_clp", 0))
-
-    return lineas
+    return _construir_lineas(movimiento, resultado_validacion, reglas)
 
 
 def transformar_lote(movimientos, resultados_validacion, decisiones, reglas):
@@ -359,26 +391,77 @@ def transformar_lote(movimientos, resultados_validacion, decisiones, reglas):
     return {"transformados": transformados, "excluidos": excluidos}
 
 
+def previsualizar_lote(movimientos, resultados_validacion, reglas):
+    """Envoltorio de lote para --preview. Analogo a transformar_lote(), pero
+    sin DecisionHumana en absoluto: nunca lee ni simula aprobaciones. Nunca
+    produce previsualizaciones parciales para un movimiento -- cualquier
+    TransformError se clasifica como excluido, igual que transformar_lote()."""
+    resultados_por_id = {r["movimiento_id"]: r for r in resultados_validacion}
+
+    previstos = {}
+    excluidos = []
+    for movimiento in movimientos:
+        movimiento_id = movimiento["movimiento_id"]
+        resultado = resultados_por_id.get(movimiento_id)
+        if resultado is None:
+            excluidos.append({"movimiento_id": movimiento_id, "motivo": "SIN_RESULTADO_VALIDACION"})
+            continue
+        try:
+            lineas = previsualizar_movimiento(movimiento, resultado, reglas)
+        except TransformError as e:
+            excluidos.append({"movimiento_id": movimiento_id, "motivo": e.codigo})
+            continue
+        previstos[movimiento_id] = lineas
+
+    return {"previstos": previstos, "excluidos": excluidos}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("movimientos_json")
     parser.add_argument("resultados_json")
-    parser.add_argument("lote_id")
+    parser.add_argument(
+        "lote_id", nargs="?", default=None,
+        help="Requerido salvo con --preview (en --preview no se lee ni escribe "
+             "aprobaciones-<lote_id>.json, asi que lote_id no aplica).",
+    )
     parser.add_argument("--directorio", default=".", help="Directorio con aprobaciones-<lote_id>.json")
     parser.add_argument("--reglas", default=None)
     parser.add_argument("--out", default=None)
+    parser.add_argument(
+        "--preview", action="store_true",
+        help="Modo de solo lectura: exige unicamente estado_motor==APTO, nunca "
+             "estado_humano==APROBADO; no lee/escribe aprobaciones-<lote_id>.json; "
+             "no genera CSV. Produce las mismas LineaSoftland[] que el camino "
+             "normal producira una vez aprobado.",
+    )
     args = parser.parse_args(argv)
+
+    if not args.preview and args.lote_id is None:
+        parser.error("lote_id es requerido salvo en modo --preview")
 
     with open(args.movimientos_json, encoding="utf-8") as f:
         movimientos = json.load(f).get("movimientos", [])
     with open(args.resultados_json, encoding="utf-8") as f:
         resultados = json.load(f).get("resultados", [])
+    reglas = _cargar_reglas(args.reglas)
+
+    if args.preview:
+        resultado = previsualizar_lote(movimientos, resultados, reglas)
+        salida = json.dumps(resultado, ensure_ascii=False, indent=2)
+        if args.out:
+            Path(args.out).write_text(salida, encoding="utf-8")
+            print(f"Movimientos previsualizados: {len(resultado['previstos'])}")
+            print(f"Excluidos: {len(resultado['excluidos'])}")
+        else:
+            print(salida)
+        return 0
+
     ruta_lote = Path(args.directorio) / f"aprobaciones-{args.lote_id}.json"
     decisiones = []
     if ruta_lote.exists():
         with open(ruta_lote, encoding="utf-8") as f:
             decisiones = json.load(f).get("decisiones", [])
-    reglas = _cargar_reglas(args.reglas)
 
     resultado = transformar_lote(movimientos, resultados, decisiones, reglas)
     salida = json.dumps(resultado, ensure_ascii=False, indent=2)

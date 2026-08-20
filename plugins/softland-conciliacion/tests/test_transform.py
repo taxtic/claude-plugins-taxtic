@@ -811,3 +811,151 @@ def test_transformar_lote_nunca_produce_lineas_para_no_aprobados():
     resultado = tr.transformar_lote([m], [r], [], _reglas_transform())
     assert resultado["transformados"] == {}
     assert resultado["excluidos"][0]["motivo"] == "SIN_DECISION_HUMANA"
+
+
+# --- --preview: modo de solo lectura (reutiliza _construir_lineas, no la reimplementa) ---
+
+def test_preview_funciona_apto_sin_decision_humana():
+    """--preview exige unicamente estado_motor==APTO -- nunca exige, ni
+    siquiera consulta, una DecisionHumana."""
+    m = _movimiento()
+    r = _resultado(m)
+    lineas = tr.previsualizar_movimiento(m, r, _reglas_transform())
+    assert [l["tipo_linea"] for l in lineas] == ["BANCO", "CLIENTE"]
+
+
+def test_preview_rechaza_no_apto_igual_que_el_camino_normal():
+    a = _asignacion(numero_documento=None, monto_aplicado=1000, texto_original_celda="AJUSTAR",
+                     tipo_documento="DESCONOCIDO", requiere_revision=True, motivo_revision="TEXTO_NO_FACTURA")
+    m = _movimiento(monto_abono=1000, asignaciones=[a])
+    r = _resultado(m)
+    assert r["estado_motor"] == "REVISION"
+    try:
+        tr.previsualizar_movimiento(m, r, _reglas_transform())
+        assert False, "debia fallar"
+    except tr.TransformError as e:
+        assert e.codigo == "ESTADO_MOTOR_NO_APTO"
+
+
+def test_preview_y_transform_normal_producen_lineas_estructuralmente_identicas():
+    """Prueba central: para el mismo (movimiento, resultado_validacion,
+    reglas), previsualizar_movimiento() y transformar_movimiento() (una vez
+    APROBADO) deben producir listas de LineaSoftland IDENTICAS -- no una
+    comparacion parcial de campos, sino el objeto completo, en el mismo
+    orden. Esto esta garantizado por diseno: ambas funciones llaman
+    exclusivamente a _construir_lineas()."""
+    m = _movimiento()
+    r = _resultado(m)
+    reglas = _reglas_transform()
+
+    lineas_preview = tr.previsualizar_movimiento(m, r, reglas)
+
+    decision = _decision(m["movimiento_id"], estado_humano="APROBADO")
+    lineas_normal = tr.transformar_movimiento(m, r, decision, reglas)
+
+    assert lineas_preview == lineas_normal
+
+
+def test_preview_y_transform_normal_identicas_caso_multifactura():
+    asigs = [
+        _asignacion(1, numero_documento=32007, monto_aplicado=30000, texto_original_celda=32007),
+        _asignacion(2, numero_documento=33100, monto_aplicado=70000, texto_original_celda=33100),
+    ]
+    m = _movimiento(monto_abono=100000, asignaciones=asigs)
+    r = _resultado(m)
+    reglas = _reglas_transform()
+
+    lineas_preview = tr.previsualizar_movimiento(m, r, reglas)
+    decision = _decision(m["movimiento_id"])
+    lineas_normal = tr.transformar_movimiento(m, r, decision, reglas)
+
+    assert lineas_preview == lineas_normal
+    assert len(lineas_preview) == 3
+
+
+def test_preview_no_lee_ni_escribe_archivo_de_aprobacion(tmp_path):
+    """--preview nunca toca aprobaciones-<lote_id>.json: se ejecuta sin
+    lote_id, y el directorio de trabajo permanece vacio."""
+    import json as _json
+    m = _movimiento()
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(_json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(_json.dumps({"resultados": [r]}), encoding="utf-8")
+    out_path = tmp_path / "preview.json"
+
+    antes = set(os.listdir(tmp_path))
+    codigo = tr.main([str(mov_path), str(res_path), "--preview", "--out", str(out_path)])
+    despues = set(os.listdir(tmp_path))
+
+    assert codigo == 0
+    nuevos = despues - antes
+    assert nuevos == {"preview.json"}  # ningun aprobaciones-*.json aparecio
+    assert not any(n.startswith("aprobaciones-") for n in despues)
+
+
+def test_preview_no_genera_csv_solo_json_de_lineas():
+    """--preview escribe unicamente el JSON de LineaSoftland (previstos/
+    excluidos) -- nunca invoca ni depende de export_softland.py, y su salida
+    no es un CSV."""
+    import inspect
+    fuente = inspect.getsource(tr)
+    assert "export_softland" not in fuente
+
+    m = _movimiento()
+    r = _resultado(m)
+    resultado = tr.previsualizar_lote([m], [r], _reglas_transform())
+    assert set(resultado.keys()) == {"previstos", "excluidos"}
+    assert m["movimiento_id"] in resultado["previstos"]
+    # el valor es LineaSoftland[] (dicts con tipo_linea/cuenta/debe/haber/glosa),
+    # no una cadena CSV con delimitador ';'/',' ni fila fisica serializada.
+    lineas = resultado["previstos"][m["movimiento_id"]]
+    assert isinstance(lineas, list)
+    assert all(isinstance(l, dict) and "tipo_linea" in l for l in lineas)
+
+
+def test_preview_lote_excluye_igual_que_transformar_lote_para_sin_resultado():
+    m = _movimiento()
+    resultado = tr.previsualizar_lote([m], [], _reglas_transform())
+    assert resultado["previstos"] == {}
+    assert resultado["excluidos"][0]["motivo"] == "SIN_RESULTADO_VALIDACION"
+
+
+def test_cli_sin_preview_sigue_exigiendo_lote_id(tmp_path, capsys):
+    """La ausencia de --preview conserva exactamente la CLI existente:
+    lote_id sigue siendo obligatorio en el camino normal."""
+    import json as _json
+    m = _movimiento()
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(_json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(_json.dumps({"resultados": [r]}), encoding="utf-8")
+
+    try:
+        tr.main([str(mov_path), str(res_path)])
+        assert False, "debia fallar: lote_id es requerido sin --preview"
+    except SystemExit as e:
+        assert e.code == 2  # argparse.error() sale con codigo 2
+
+
+def test_cli_camino_normal_sin_preview_identico_al_comportamiento_previo(tmp_path):
+    """Invocacion existente (movimientos_json resultados_json lote_id) sigue
+    siendo valida e identica: produce 'transformados'/'excluidos', no
+    'previstos'."""
+    import json as _json
+    m = _movimiento()
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(_json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(_json.dumps({"resultados": [r]}), encoding="utf-8")
+    out_path = tmp_path / "salida.json"
+
+    codigo = tr.main([str(mov_path), str(res_path), "lote-cli-test", "--directorio", str(tmp_path), "--out", str(out_path)])
+    assert codigo == 0
+    resultado = _json.loads(out_path.read_text(encoding="utf-8"))
+    assert set(resultado.keys()) == {"transformados", "excluidos"}
+    assert resultado["transformados"] == {}  # sin aprobaciones-lote-cli-test.json, no hay decisiones
+    assert resultado["excluidos"][0]["motivo"] == "SIN_DECISION_HUMANA"
