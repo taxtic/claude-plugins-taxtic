@@ -67,6 +67,31 @@ shell y debe evitarse en PowerShell:
 - `&&` para encadenar comandos — usar `;` o líneas separadas, o `if ($?) { ... }` si el segundo
   comando debe depender del éxito del primero.
 
+### Directorio de ejecución: raíz del plugin
+
+Todos los comandos `.\scripts\...` deben ejecutarse desde la **raíz del plugin**
+`softland-conciliacion` — el directorio que contiene `scripts\`, `rules\`, `schemas\` y `skills\`.
+La carpeta `skills\conciliacion-softland\` (donde vive este `SKILL.md`) **no** es el directorio de
+ejecución de los scripts, solo contiene la documentación de la skill.
+
+Si se conoce la ruta de la carpeta que contiene este `SKILL.md`, la raíz del plugin está exactamente
+dos niveles arriba (`skills\conciliacion-softland\` → `..\..`).
+
+```powershell
+$pluginDir = <raíz de softland-conciliacion resuelta para esta corrida>   # no hardcodear una ruta fija
+Set-Location $pluginDir
+
+if (-not (Test-Path "$pluginDir\scripts\read_excel.py")) { <detenerse aquí> }
+if (-not (Test-Path "$pluginDir\rules\taxtic.json")) { <detenerse aquí> }
+```
+
+Ambas comprobaciones deben devolver `True` antes de continuar con cualquier otro paso. Si
+`$pluginDir` no se puede resolver de forma inequívoca para esta corrida: **detenerse**, informar al
+usuario y pedirle la ruta — nunca buscar rutas arbitrariamente por el sistema de archivos, nunca
+ejecutar desde `skills\conciliacion-softland\`, y nunca improvisar otra ubicación. No existe una
+ruta de Windows fija válida para todas las instalaciones — no hardcodear una ruta local específica
+como regla general de esta skill.
+
 ### CLI exacta (PowerShell)
 
 ```powershell
@@ -170,6 +195,28 @@ Espera una respuesta **literal** `APROBADO` o `RECHAZADO` del usuario antes de c
 asumas, no la hardcodees en ningún ejemplo o script como si fuera el único resultado posible. Nunca
 reutilices una decisión de una corrida anterior para un movimiento distinto o una nueva ejecución
 del mismo movimiento — cada aprobación es específica de esa corrida.
+
+### No editorializar sobre datos ausentes
+
+Al mostrar la revisión, si `clientes[].nombre` (de `approval.py preparar`) viene `null`: no afirmar
+ni insinuar que el cliente existe en Softland, que está identificado por RUT, ni que la ausencia del
+nombre es "normal" — ninguna fuente de la corrida (`02_normalizado.json`, `03_validado.json`,
+`03b_revision.json`, `rules/taxtic.json`) da evidencia de eso. Limitar la advertencia exactamente a
+los hechos verificables en esas fuentes:
+- `nombre_cliente` no viene en el Excel;
+- no fue inferido desde la descripción bancaria (`n_cheque_transferencia`/`descripcion_banco`);
+- si se aprueba, la glosa Banco se generará sin nombre del cliente.
+
+### Previsualización de glosa: verbatim, sin embellecer
+
+La glosa previsualizada (construida desde `rules/taxtic.json` como se describe arriba) debe
+reproducirse **exactamente** como la generaría `transform.py` a partir de la plantilla y los valores
+disponibles — nunca aplicar `trim`, colapsar espacios, ni normalizar o embellecer el texto. Por
+ejemplo, con `nombre_cliente = null` y plantilla `glosas.banco.un_cliente` =
+`'PAGO CLIENTE {NOMBRE_CLIENTE} F{FACTURAS}'`, el resultado real es `PAGO CLIENTE  F34174` (con
+doble espacio, porque `{NOMBRE_CLIENTE}` queda vacío) y así debe mostrarse. Al presentar este valor,
+usar un bloque de código (no una celda de tabla Markdown ni texto en línea) para que los espacios no
+se colapsen visualmente al renderizar.
 
 ## 3. Reglas de negocio — siempre desde `rules/`, nunca hardcodeadas en la conversación
 
