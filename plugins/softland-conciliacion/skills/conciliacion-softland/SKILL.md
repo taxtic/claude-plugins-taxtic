@@ -29,13 +29,17 @@ confirmada en `rules/`, **detente y pregunta** — no lo completes por inferenci
 
 ```
 Excel de conciliación
-  → read_excel.py       (lectura estructural, sin decidir negocio)
-  → normalize.py        (Movimiento + Asignacion[] canónicos)
-  → validate.py         (estado_motor: APTO / REVISION / ERROR)
-  → [PARADA OBLIGATORIA — approval.py preparar + revisión humana, esperar decisión literal]
-  → approval.py decidir (estado_humano: APROBADO / RECHAZADO, por movimiento)
-  → si RECHAZADO: detener la corrida aquí (no continuar)
-  → transform.py        (LineaSoftland[]: BANCO + CLIENTE[] + Diferencia opcional)
+  → read_excel.py         (lectura estructural, sin decidir negocio)
+  → normalize.py          (Movimiento + Asignacion[] canónicos)
+  → validate.py           (estado_motor: APTO / REVISION / ERROR)
+  → transform.py --preview (LineaSoftland[] PREVISTAS -- exige solo APTO, nunca aprobación)
+  → approval.py preparar
+  → [PARADA OBLIGATORIA — revisión humana con la preview determinística, esperar decisión literal]
+  → approval.py decidir   (estado_humano: APROBADO / RECHAZADO, por movimiento)
+  → si RECHAZADO: detener la corrida aquí (no continuar, no transformar, no exportar)
+  → transform.py          (camino normal, LineaSoftland[]: BANCO + CLIENTE[] + Diferencia opcional)
+  → [verificación: LineaSoftland[] del transform normal == las mostradas por --preview
+     para el mismo movimiento; si difieren, detenerse antes de exportar]
   → [verificación de cuadratura: sum(debe) == sum(haber)]
   → export_softland.py --perfil OFICIAL_61
   → [ENTREGA — el usuario carga el CSV manualmente en Softland]
@@ -66,6 +70,11 @@ shell y debe evitarse en PowerShell:
 - `ls -la` — usar `Get-ChildItem` (o su alias `ls`, sin flags de Bash).
 - `&&` para encadenar comandos — usar `;` o líneas separadas, o `if ($?) { ... }` si el segundo
   comando debe depender del éxito del primero.
+
+**No ejecutar `Remove-Item`, `del`, `erase`, `rm`, `rmdir` ni ningún otro comando de borrado o
+limpieza como parte de este flujo.** El directorio temporal de la corrida (`$WD`) no necesita
+limpiarse durante la ejecución. No improvisar comandos que no sean estrictamente necesarios para el
+pipeline documentado en esta sección.
 
 ### Directorio de ejecución: raíz del plugin
 
@@ -101,25 +110,38 @@ New-Item -ItemType Directory -Path $WD -Force | Out-Null
 python .\scripts\read_excel.py "C:\ruta\archivo.xlsx" --out "$WD\01_raw.json"
 python .\scripts\normalize.py "$WD\01_raw.json" --banco BCI --out "$WD\02_normalizado.json"
 python .\scripts\validate.py "$WD\02_normalizado.json" --out "$WD\03_validado.json"
+python .\scripts\transform.py "$WD\02_normalizado.json" "$WD\03_validado.json" --preview --out "$WD\04_preview.json"
 python .\scripts\approval.py preparar "$WD\02_normalizado.json" "$WD\03_validado.json" <movimiento_id> --out "$WD\03b_revision.json"
 ```
 
-**PARADA HUMANA OBLIGATORIA** — ver "## 2. Parada obligatoria antes de aprobar" para qué mostrar
-exactamente y qué le falta a `03b_revision.json`. Espera una respuesta **literal** `APROBADO` o
-`RECHAZADO` del usuario; no la des por sentada ni la hardcodees en ningún ejemplo o script.
+`transform.py --preview` es la **única** fuente de las líneas contables (cuenta, Debe, Haber, glosa,
+auxiliar, líneas de diferencia) que se mostrarán en la revisión — ver "## 2. Parada obligatoria antes
+de aprobar" para el detalle completo de qué mostrar y de dónde sale cada dato.
+
+**PARADA HUMANA OBLIGATORIA** — espera una respuesta **literal** `APROBADO` o `RECHAZADO` del
+usuario; no la des por sentada ni la hardcodees en ningún ejemplo o script.
 
 ```powershell
 python .\scripts\approval.py decidir "$WD\02_normalizado.json" "$WD\03_validado.json" <lote_id> <movimiento_id> <decision> "<revisor>" --directorio "$WD"
 ```
 
-Si `<decision>` fue `RECHAZADO`: **detener la corrida aquí**. No ejecutar `transform.py` ni
-`export_softland.py` para este movimiento.
+Si `<decision>` fue `RECHAZADO`: **detener la corrida aquí**. No ejecutar `transform.py` (camino
+normal) ni `export_softland.py` para este movimiento.
 
 Si `<decision>` fue `APROBADO`, continuar:
 
 ```powershell
-python .\scripts\transform.py "$WD\02_normalizado.json" "$WD\03_validado.json" <lote_id> --directorio "$WD" --out "$WD\04_lineas.json"
-python .\scripts\export_softland.py "$WD\04_lineas.json" --perfil OFICIAL_61 --out "$WD\05_softland.csv"
+python .\scripts\transform.py "$WD\02_normalizado.json" "$WD\03_validado.json" <lote_id> --directorio "$WD" --out "$WD\05_lineas.json"
+```
+
+**Verificación de consistencia preview → transform** (ver "### Consistencia preview → transform" en
+la sección 2): antes de exportar, comparar `transformados[<movimiento_id>]` en `05_lineas.json`
+contra `previstos[<movimiento_id>]` en `04_preview.json` — estructura completa, no un subconjunto de
+campos. Si difieren en algo: **detenerse aquí, informar la discrepancia y no ejecutar
+`export_softland.py`**. Si son idénticas, continuar:
+
+```powershell
+python .\scripts\export_softland.py "$WD\05_lineas.json" --perfil OFICIAL_61 --out "$WD\06_softland.csv"
 ```
 
 Valores que nunca se hardcodean como si fueran de producción:
@@ -138,6 +160,10 @@ Valores que nunca se hardcodean como si fueran de producción:
 - **`read_excel.py`**: el Excel es argumento **posicional** (no existe `--archivo`). No acepta
   `--banco` — ese flag no existe en este script.
 - **`normalize.py`**: `raw_json` es posicional. `--banco` se usa aquí (no en `read_excel.py`).
+- **`transform.py`**: `movimientos_json` y `resultados_json` son posicionales; `lote_id` es
+  posicional **opcional** (`nargs="?"`) — solo se omite cuando se usa `--preview` (que no lee ni
+  escribe `aprobaciones-<lote_id>.json`, así que `lote_id` no aplica). Sin `--preview`, `lote_id`
+  sigue siendo obligatorio, igual que antes.
 - **`export_softland.py`**: `lineas_json` es posicional. `--out` es **obligatorio** (falla sin él).
   Para este flujo, usar siempre `--perfil OFICIAL_61`.
 
@@ -164,59 +190,102 @@ nunca puede quedar `APROBADO` (debe corregirse y volver a pasar por `validate.py
 
 ## 2. Parada obligatoria antes de aprobar
 
-Después de `validate.py`, ejecuta `approval.py preparar` (ver bloque CLI arriba). Su JSON de salida
-(`preparar_revision()`) trae: `movimiento_id`, `fecha_pago`, `monto_abono`, `origen_pago`,
-`clientes` (pares rut/nombre), `asignaciones` completas, `suma_asignaciones`, `diferencia`,
-`estado_motor`, `motivos`, `advertencias` y `puede_aprobar`. Úsalo como base — no reconstruyas esos
-campos a mano.
+Después de `validate.py`, ejecuta **`transform.py --preview`** y luego `approval.py preparar` (ver
+bloque CLI arriba, en ese orden). `04_preview.json` (`transform.py --preview`) es la **única fuente
+de verdad** de las líneas contables (`LineaSoftland[]`) que se mostrarán en la revisión — la skill
+**NO debe calcular, reconstruir, inferir ni reinterpretar** cuentas, Debe, Haber, glosas, auxiliar,
+RUT sin DV, líneas de diferencia ni ningún otro atributo Softland. Todo eso se copia **verbatim**
+desde `04_preview.json`, en `previstos[<movimiento_id>]`.
 
-**`approval.py preparar` NO trae todo lo que esta sección exige mostrar.** Verificado directamente
-contra el código (`approval.py:_clientes`/`preparar_revision`): su salida **no incluye** el campo
-`banco` del movimiento, **no incluye** un flag explícito de cuadratura (`validaciones.cuadratura_exacta`
-vive en el JSON de `validate.py`, no se copia a `preparar_revision`), y **no incluye ninguna
-previsualización de líneas contables** (`cuenta`/Debe/Haber/glosa) — `approval.py` nunca calcula
-eso, por diseño ("nunca crea cuentas Softland, no genera Debe/Haber").
+En particular, **prohibido**:
+- usar `descripcion_banco` como glosa;
+- seleccionar manualmente `glosas.banco.*`;
+- seleccionar manualmente `glosas.cliente_*`;
+- quitar manualmente el dígito verificador del RUT;
+- calcular manualmente Debe/Haber;
+- cualquier otra reconstrucción de reglas de `rules/taxtic.json` que `transform.py --preview` ya
+  resolvió por su cuenta.
 
-Por lo tanto, antes de ejecutar `approval.py decidir`, **muestra siempre** al usuario, combinando
-todo lo anterior con lo que falta — cada dato con su fuente exacta, nunca inferido ni inventado:
-- lo que ya trae `approval.py preparar` (`03b_revision.json`, arriba);
+`03b_revision.json` (`approval.py preparar`) trae: `movimiento_id`, `fecha_pago`, `monto_abono`,
+`origen_pago`, `clientes` (pares rut/nombre), `asignaciones` completas, `suma_asignaciones`,
+`diferencia`, `estado_motor`, `motivos`, `advertencias` y `puede_aprobar`. Úsalo como base para esos
+campos — no los reconstruyas a mano. **No trae** `banco` ni un flag explícito de cuadratura, ni (por
+diseño) ninguna línea contable — para eso existen `02_normalizado.json`/`03_validado.json` y, ahora,
+`04_preview.json`.
+
+Antes de ejecutar `approval.py decidir`, **muestra siempre** al usuario, cada dato con su fuente
+exacta, nunca inferido ni inventado:
+- `movimiento_id`, `fecha_pago`, `monto_abono`, `estado_motor`, datos de asignación/cliente — de
+  `03b_revision.json`;
 - `banco`: leer `movimientos[i].banco` en `02_normalizado.json`, donde `movimientos[i].movimiento_id`
-  coincide con el `movimiento_id` de esta revisión — `preparar` no lo trae;
+  coincide con el `movimiento_id` de esta revisión;
 - la cuadratura explícita: leer `resultados[i].validaciones.cuadratura_exacta` en
   `03_validado.json`, donde `resultados[i].movimiento_id` coincide con el mismo `movimiento_id`;
-- las líneas contables que se generarían (cuenta, Debe/Haber, glosa) — construidas únicamente a
-  partir de `rules/taxtic.json` (`banco.cuenta` según `banco.codigo`, `cuentas.cliente`,
-  `glosas.banco.un_cliente`/`glosas.banco.multicliente`, `glosas.cliente_normal`/`glosas.cliente_transbank`,
-  regla de auxiliar sin DV) como previsualización determinística manual, **sin ejecutar
-  `transform.py` todavía** (requiere una decisión humana ya registrada, y ningún script de este
-  plugin genera hoy esa previsualización de forma automática).
+- las líneas contables **PREVISTAS**: leer `previstos[<movimiento_id>]` en `04_preview.json` —
+  verbatim, sin alterar ningún valor (ver "Verbatim obligatorio" abajo). Por cada línea, mostrar
+  según estén presentes en el JSON: `cuenta`, `debe`, `haber`, `glosa`, `auxiliar`, y los campos de
+  documento relevantes (`tipo_documento`, `numero_documento`, fechas, `tipo_docto_conciliacion`,
+  `numero_docto_conciliacion`). No inventar ni completar un campo que venga `null` o ausente.
+
+Si `nombre_cliente` es `null` (en `clientes[].nombre` de `03b_revision.json` o en las asignaciones de
+`04_preview.json`), indicar únicamente: *"El nombre del cliente no viene informado en el Excel y no
+fue inferido."* No afirmar que Softland conoce al cliente por RUT, que existe en Softland, ni ninguna
+otra explicación no demostrada por las fuentes de la corrida.
 
 Espera una respuesta **literal** `APROBADO` o `RECHAZADO` del usuario antes de continuar — no la
-asumas, no la hardcodees en ningún ejemplo o script como si fuera el único resultado posible. Nunca
-reutilices una decisión de una corrida anterior para un movimiento distinto o una nueva ejecución
-del mismo movimiento — cada aprobación es específica de esa corrida.
+asumas, no la hardcodees en ningún ejemplo o script como si fuera el único resultado posible. Antes
+de esa respuesta explícita: no ejecutar `approval.py decidir`, `transform.py` (camino normal) ni
+`export_softland.py`. Nunca reutilices una decisión de una corrida anterior para un movimiento
+distinto o una nueva ejecución del mismo movimiento — cada aprobación es específica de esa corrida.
+
+Si la respuesta es `RECHAZADO`: registrar `RECHAZADO` mediante `approval.py decidir`, detener el
+flujo — no transformar (camino normal), no exportar.
+
+Si la respuesta es `APROBADO`: registrar `APROBADO` mediante `approval.py decidir`, ejecutar
+`transform.py` (camino normal) y, tras la verificación de consistencia (ver abajo), `export_softland.py`.
 
 ### No editorializar sobre datos ausentes
 
-Al mostrar la revisión, si `clientes[].nombre` (de `approval.py preparar`) viene `null`: no afirmar
-ni insinuar que el cliente existe en Softland, que está identificado por RUT, ni que la ausencia del
-nombre es "normal" — ninguna fuente de la corrida (`02_normalizado.json`, `03_validado.json`,
-`03b_revision.json`, `rules/taxtic.json`) da evidencia de eso. Limitar la advertencia exactamente a
-los hechos verificables en esas fuentes:
+Al mostrar la revisión, si el nombre del cliente viene `null`: no afirmar ni insinuar que el cliente
+existe en Softland, que está identificado por RUT, ni que la ausencia del nombre es "normal" —
+ninguna fuente de la corrida (`02_normalizado.json`, `03_validado.json`, `03b_revision.json`,
+`04_preview.json`) da evidencia de eso. Limitar la advertencia exactamente a los hechos verificables
+en esas fuentes:
 - `nombre_cliente` no viene en el Excel;
 - no fue inferido desde la descripción bancaria (`n_cheque_transferencia`/`descripcion_banco`);
-- si se aprueba, la glosa Banco se generará sin nombre del cliente.
+- si se aprueba, la glosa Banco se generará sin nombre del cliente (tal como ya lo muestra, verbatim,
+  `04_preview.json`).
 
-### Previsualización de glosa: verbatim, sin embellecer
+### Verbatim obligatorio
 
-La glosa previsualizada (construida desde `rules/taxtic.json` como se describe arriba) debe
-reproducirse **exactamente** como la generaría `transform.py` a partir de la plantilla y los valores
-disponibles — nunca aplicar `trim`, colapsar espacios, ni normalizar o embellecer el texto. Por
-ejemplo, con `nombre_cliente = null` y plantilla `glosas.banco.un_cliente` =
-`'PAGO CLIENTE {NOMBRE_CLIENTE} F{FACTURAS}'`, el resultado real es `PAGO CLIENTE  F34174` (con
-doble espacio, porque `{NOMBRE_CLIENTE}` queda vacío) y así debe mostrarse. Al presentar este valor,
-usar un bloque de código (no una celda de tabla Markdown ni texto en línea) para que los espacios no
-se colapsen visualmente al renderizar.
+Todo valor mostrado desde `04_preview.json` (glosas, y en general cualquier campo de texto) se
+presenta **carácter por carácter, exactamente como viene en el JSON**. No aplicar `Trim()`,
+`TrimStart()`, `TrimEnd()`, `-replace '\s+'`, normalización de espacios, concatenación manual, ni
+ningún reformateo. Cuando una glosa pueda contener espacios consecutivos, mostrarla dentro de un
+bloque de código (no una celda de tabla Markdown ni texto en línea) para que los espacios no se
+colapsen visualmente al renderizar.
+
+Por ejemplo, si `04_preview.json` trae `"glosa": "PAGO CLIENTE  F34174"` (con nombre de cliente
+vacío), debe mostrarse exactamente así, con los dos espacios; si trae `"glosa": "PAGO F 34174"`,
+igual, exactamente así. Estos son ejemplos ilustrativos de un caso ya observado, **no** valores
+hardcodeados como regla de esta skill — la regla es siempre "verbatim desde `04_preview.json`",
+cualquiera sea el contenido real de esa corrida.
+
+### Consistencia preview → transform
+
+Después de `APROBADO`, la skill **no vuelve a calcular ni a modificar** las líneas contables — el
+`transform.py` normal (camino de la CLI, tras `approval.py decidir`) es la fuente real posterior a la
+decisión humana. Antes de ejecutar `export_softland.py`, comparar `transformados[<movimiento_id>]`
+en `05_lineas.json` (salida de ese `transform.py` normal) contra `previstos[<movimiento_id>]` en
+`04_preview.json` — la estructura completa de cada `LineaSoftland`, no una comparación parcial. Esta
+comparación debe ser una igualdad estructural exacta — todos los campos de cada `LineaSoftland`, en
+el mismo orden — nunca por inspección visual del agente, interpretación semántica, normalización de
+espacios, ni verificación de un subconjunto de campos representativos.
+
+Si se detecta cualquier diferencia entre ambas para el mismo movimiento: **detenerse antes de
+exportar**, informar la discrepancia exacta al usuario, y **no generar un CSV para carga**. No
+intentar "corregir" ninguna de las dos salidas manualmente — una discrepancia aquí indica un problema
+real que debe investigarse, no algo que la skill deba resolver por su cuenta.
 
 ## 3. Reglas de negocio — siempre desde `rules/`, nunca hardcodeadas en la conversación
 
