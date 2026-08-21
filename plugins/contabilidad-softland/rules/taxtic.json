@@ -1,0 +1,42 @@
+{
+  "_nota": "Reglas contables confirmadas por Contabilidad TAXTIC para el MVP (solo banco BCI). Este archivo es consumido por fases futuras (transform.py); en Fase 1 solo se centraliza aqui para no hardcodear valores en Python.",
+  "banco": {
+    "codigo": "BCI",
+    "cuenta": "10-01-003"
+  },
+  "cuentas": {
+    "cliente": "10-02-001",
+    "diferencia_transbank": "10-04-001"
+  },
+  "auxiliares_fijos": {
+    "diferencia_transbank": "96689310"
+  },
+  "auxiliares_variables": {
+    "_nota": "Estos auxiliares no son un valor literal fijo (a diferencia de auxiliares_fijos): se derivan por movimiento desde un campo ya presente en el Movimiento/Asignacion normalizados. Confirmado con evidencia real de Softland ('El Auxiliar \"765432101\" NO existe o esta inactivo'): el Codigo Auxiliar de Softland se utiliza SIN digito verificador. Ejemplo (RUT ficticio, ya usado en tests): Asignacion.rut_cliente = '765432101' (normalize.py, CON DV, sin puntos ni guion) -> transform.py._rut_sin_dv() quita el ultimo caracter EXCLUSIVAMENTE para el campo Auxiliar de Softland -> auxiliar = '76543210' (SIN DV). El RUT completo con DV se sigue usando sin cambios en cualquier otro lugar (Movimiento, Asignacion, glosas).",
+    "cliente": "rut_cliente_normalizado"
+  },
+  "tipos_documento": {
+    "cliente": "20"
+  },
+  "tipo_docto_conciliacion": "TB",
+  "centro_costo_mvp": "0",
+  "_nota_centro_costo_mvp": "CONFIGURACION HUERFANA (auditoria Fase 8.16): este valor fue confirmado por Contabilidad en una fase temprana pero NUNCA fue conectado a transform.py -- ningun campo de LineaSoftland ni ninguna posicion fisica de OPERATIVO_62/OFICIAL_61 lo consume (verificado por Fase 8.4.1: la posicion 16 'Codigo Centro de Costo' es puro relleno fisico en ambos perfiles). Se mantiene documentado y sin eliminar porque la decision de implementarlo o retirarlo es de negocio, no tecnica -- no se ha decidido todavia si el MVP debe declarar centro de costo.",
+  "tolerancia_diferencia_clp": 0,
+  "numero_conciliacion": {
+    "_nota": "Confirmado por Contabilidad (Fase 4): la columna C 'N°' del Excel, preservada tal cual en Movimiento.numero_conciliacion, ES exactamente el valor de la columna 18 Softland (Nro. Docto. Conciliacion). Aplica solo a la linea Banco, junto con tipo_docto_conciliacion='TB' (columna 17).",
+    "fuente": "movimiento.numero_conciliacion",
+    "aplica_a": "BANCO",
+    "columna_softland": 18
+  },
+  "glosas": {
+    "cliente_normal": "PAGO F {factura}",
+    "cliente_transbank": "PAGO CLIENTES F {factura}",
+    "banco": {
+      "un_cliente": "PAGO CLIENTE {NOMBRE_CLIENTE} F{FACTURAS}",
+      "multicliente": "PAGO CLIENTE F{FACTURAS}"
+    },
+    "diferencia_transbank": "DIFERENCIA POR COBRO COMISION TRANSBANK"
+  },
+  "_nota_glosa_banco": "Confirmado por Contabilidad (Fase 4.1): glosas.banco.un_cliente se usa cuando todas las Asignacion del movimiento comparten un unico rut_cliente; glosas.banco.multicliente se usa cuando hay mas de un rut_cliente distinto (ej. Transbank multi-RUT ya resuelto por respaldo) -- en ese caso la glosa Banco NO lleva ningun nombre de cliente. En ambos casos {FACTURAS} se construye concatenando los folios en el orden de las Asignacion, separados por '-' (ej. 32007 y 33100 -> 'F32007-33100', no un rango numerico; no se ordenan ni se deduplican).",
+  "_pendientes": []
+}

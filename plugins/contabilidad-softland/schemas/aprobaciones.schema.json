@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AprobacionLote",
+  "description": "Contrato de persistencia interna de approval.py (Fase 3). Es un detalle de implementacion, NO una interfaz que Contabilidad edite manualmente -- la futura Skill llama a approval.py despues de que el usuario dice explicitamente Aprobar o Rechazar. Las decisiones son por lote/corrida; no existe un historico acumulativo global. No incluye checksum (fuera del MVP) ni estado_motor (esa es una fuente de datos separada, producida por validate.py).",
+  "type": "object",
+  "required": ["lote_id", "decisiones"],
+  "additionalProperties": false,
+  "properties": {
+    "lote_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identificador explicito del lote/corrida. Impide mezclar decisiones de conciliaciones distintas."
+    },
+    "decisiones": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/DecisionHumana" }
+    }
+  },
+  "definitions": {
+    "DecisionHumana": {
+      "type": "object",
+      "required": ["movimiento_id", "estado_humano", "revisor", "fecha_decision", "observacion"],
+      "additionalProperties": false,
+      "properties": {
+        "movimiento_id": { "type": "string", "minLength": 1 },
+        "estado_humano": {
+          "type": "string",
+          "enum": ["APROBADO", "RECHAZADO"],
+          "description": "PENDIENTE no se persiste: se deriva de la ausencia de una decision registrada para ese movimiento_id en este lote."
+        },
+        "revisor": { "type": "string", "minLength": 1 },
+        "fecha_decision": { "type": "string" },
+        "observacion": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

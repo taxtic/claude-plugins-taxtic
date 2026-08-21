@@ -1,0 +1,61 @@
+{
+  "_nota": "Perfiles de la CAPA DE ENTRADA (read_excel.py), Fase 9. Separado deliberadamente de rules/softland-layouts.json (que es la capa de SALIDA hacia Softland y permanece intacto). Cada perfil describe como leer un Excel real distinto y termina produciendo exactamente el mismo contrato canonico de campos (ver 'campos_canonicos') que normalize.py ya consumia antes de esta fase -- ningun cambio aqui afecta a normalize.py, validate.py, approval.py, transform.py, export_softland.py ni a rules/softland-*.json.",
+  "campos_canonicos": [
+    "fecha", "n_cheque_transferencia", "n_correlativo", "cargo", "abonos",
+    "saldo_contable", "rut_banco_crudo", "proveedor_cliente_banco_crudo",
+    "cc", "detalle_transaccion", "cuenta_categoria_ingreso"
+  ],
+  "_nota_campos_canonicos": "Lista fija e identica para los 3 perfiles. Un perfil que no provee un campo (ej. SIN_ENCABEZADO_COMPACTO no tiene saldo_contable) lo entrega explicitamente en null -- nunca omite la clave ni inventa un valor.",
+  "perfiles": {
+    "LEGACY_CON_ENCABEZADO": {
+      "_nota": "Comportamiento ACTUAL de read_excel.py antes de Fase 9, preservado sin cambios de comportamiento. Representa el fixture sintetico historico (tests/fixtures/conciliacion_fixture.xlsx) -- NO representa ningun archivo real confirmado del equipo (auditoria Fase 9: ni PRUEBA CLAUDIO.xlsx ni CLAUDIO.xlsx tienen fila de encabezado). Se mantiene exclusivamente por compatibilidad/regresion.",
+      "tiene_encabezado": true,
+      "fila_encabezado_default": 2,
+      "campos_fijos": {
+        "fecha": 1, "n_cheque_transferencia": 2, "n_correlativo": 3, "cargo": 4,
+        "abonos": 5, "saldo_contable": 6, "rut_banco_crudo": 7,
+        "proveedor_cliente_banco_crudo": 8, "cc": 9, "detalle_transaccion": 10,
+        "cuenta_categoria_ingreso": 11
+      },
+      "bloques_estrategia": "por_encabezado",
+      "primera_columna_bloques": 12
+    },
+    "SIN_ENCABEZADO_ORIGINAL": {
+      "_nota": "Estructura real de PRUEBA CLAUDIO.xlsx, confirmada empiricamente celda por celda (Fase 9): 13 columnas fisicas con datos (A-M), sin fila de encabezado, un unico bloque factura+monto (sin centro de costo). La columna N que openpyxl reporta en el rango usado NO tiene valor (celda con estilo pero vacia) -- no es un campo real.",
+      "tiene_encabezado": false,
+      "campos_fijos": {
+        "fecha": 1, "n_cheque_transferencia": 2, "n_correlativo": 3, "cargo": 4,
+        "abonos": 5, "saldo_contable": 6, "rut_banco_crudo": 7,
+        "proveedor_cliente_banco_crudo": 8, "cc": 9, "detalle_transaccion": 10,
+        "cuenta_categoria_ingreso": 11
+      },
+      "bloques_estrategia": "posicion_fija",
+      "bloques_fijos": [
+        { "factura_col": 12, "monto_col": 13, "centro_col": null }
+      ],
+      "primera_columna_bloques": 12
+    },
+    "SIN_ENCABEZADO_COMPACTO": {
+      "_nota": "Estructura real de CLAUDIO.xlsx (Fase 9), confirmada empiricamente: 10 columnas, sin fila de encabezado, sin saldo_contable ni columna de cliente independiente, un unico bloque factura+monto. nombre_cliente (proveedor_cliente_banco_crudo) NUNCA se infiere de n_cheque_transferencia -- queda explicitamente null. PENDIENTE FUNCIONAL (Fase 9): no se autoriza todavia una exportacion Softland completa para un movimiento originado en este perfil sin resolver como se confirma nombre_cliente -- ver README.",
+      "tiene_encabezado": false,
+      "campos_fijos": {
+        "fecha": 1, "n_cheque_transferencia": 2, "n_correlativo": 3, "cargo": 4,
+        "abonos": 5, "rut_banco_crudo": 6, "detalle_transaccion": 7
+      },
+      "campos_no_disponibles": [
+        "saldo_contable", "proveedor_cliente_banco_crudo", "cc", "cuenta_categoria_ingreso"
+      ],
+      "bloques_estrategia": "posicion_fija",
+      "bloques_fijos": [
+        { "factura_col": 9, "monto_col": 10, "centro_col": null }
+      ],
+      "primera_columna_bloques": 9,
+      "_nota_columna_8": "Columna 8 confirmada vacia/no utilizada en CLAUDIO.xlsx real -- no se mapea a ningun campo canonico."
+    }
+  },
+  "deteccion": {
+    "_nota": "Reglas de huella estructural usadas por read_excel.py._detectar_perfil() para elegir un perfil sin encabezado sin inferir por nombre de archivo ni solo por cantidad de columnas. Combina: (1) ausencia de texto de encabezado reconocible en la fila candidata; (2) un valor de fecha plausible (datetime/date, o entero en rango de serial Excel) en la posicion 'fecha'; (3) un valor con forma de RUT chileno en la posicion 'rut_banco_crudo' de CADA perfil sin encabezado, exigiendo que coincida con exactamente uno. Si ninguna o mas de una combinacion es concluyente: ESTRUCTURA_NO_RECONOCIDA, nunca se elige por aproximacion.",
+    "patron_rut": "^\\d{7,8}-[0-9kK]$",
+    "rango_serial_fecha_excel": [1, 100000]
+  }
+}

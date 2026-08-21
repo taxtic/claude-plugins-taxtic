@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PerfilEntradaExcel",
+  "description": "Contrato de rules/excel-layouts.json (Fase 9). Cada perfil describe como leer un Excel de conciliacion real distinto en read_excel.py. Todos los perfiles deben producir el mismo conjunto de 'campos_canonicos' -- este archivo documenta el contrato de configuracion, no decide nada sobre el formato de salida hacia Softland (ver exportacion-softland.schema.json, sin relacion con este).",
+  "type": "object",
+  "required": ["campos_canonicos", "perfiles", "deteccion"],
+  "properties": {
+    "campos_canonicos": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Lista fija de nombres de campo que TODOS los perfiles deben producir (con valor real o null). read_excel.py nunca omite una clave de esta lista en su salida, sea cual sea el perfil detectado."
+    },
+    "perfiles": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/Perfil" }
+    },
+    "deteccion": {
+      "type": "object",
+      "required": ["patron_rut", "rango_serial_fecha_excel"],
+      "properties": {
+        "patron_rut": { "type": "string", "description": "Expresion regular (aplicada tras strip/upper) para reconocer un valor con forma de RUT chileno." },
+        "rango_serial_fecha_excel": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[minimo, maximo] de un entero plausible como fecha-serial de Excel (para archivos sin fila de encabezado donde la fecha puede llegar como numero crudo)."
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Perfil": {
+      "type": "object",
+      "required": ["tiene_encabezado", "campos_fijos", "bloques_estrategia"],
+      "properties": {
+        "tiene_encabezado": {
+          "type": "boolean",
+          "description": "true si el archivo trae una fila de titulos de columna antes de los datos. Ningun archivo real confirmado hasta Fase 9 la trae -- solo el fixture historico LEGACY_CON_ENCABEZADO."
+        },
+        "fila_encabezado_default": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Solo aplica si tiene_encabezado=true: numero de fila (1-indexado) donde read_excel.py busca los titulos de columna."
+        },
+        "campos_fijos": {
+          "type": "object",
+          "description": "Mapa campo_canonico -> numero de columna fisica (1-indexado). No necesita incluir todos los campos_canonicos -- los ausentes se listan en 'campos_no_disponibles' y read_excel.py los entrega como null.",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        },
+        "campos_no_disponibles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Subconjunto de campos_canonicos que este perfil NUNCA provee (el Excel real no tiene esa columna). read_excel.py los entrega como null, nunca los infiere ni los omite."
+        },
+        "bloques_estrategia": {
+          "type": "string",
+          "enum": ["por_encabezado", "posicion_fija"],
+          "description": "'por_encabezado': los bloques factura/monto/centro se detectan buscando texto ('FACTURAS'/'MONTOS'/'CENTRO') en la fila de encabezado (requiere tiene_encabezado=true). 'posicion_fija': un unico bloque en columnas fijas, para archivos sin encabezado donde no existe forma estructural de detectar bloques repetidos."
+        },
+        "bloques_fijos": {
+          "type": "array",
+          "description": "Solo si bloques_estrategia='posicion_fija'. Lista de bloques con columnas fijas.",
+          "items": {
+            "type": "object",
+            "required": ["factura_col", "monto_col", "centro_col"],
+            "properties": {
+              "factura_col": { "type": "integer", "minimum": 1 },
+              "monto_col": { "type": "integer", "minimum": 1 },
+              "centro_col": { "type": ["integer", "null"], "minimum": 1 }
+            }
+          }
+        },
+        "primera_columna_bloques": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Primera columna fisica a partir de la cual read_excel.py busca bloques (por_encabezado) o reporta columnas no reconocidas mas alla del/los bloque(s) fijo(s) (posicion_fija)."
+        }
+      }
+    }
+  }
+}

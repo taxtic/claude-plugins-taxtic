@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PerfilLayout",
+  "description": "Contrato de rules/softland-layouts.json (Fase 6, revisado Fase 8.8). Cada perfil mapea los campos semanticos de LineaSoftland a posiciones fisicas de un layout Softland concreto. OFICIAL_61 esta respaldado por evidencia real directa (Fase 8.8: archivo de carga vigente + estructura oficial exportada de Softland, coincidentes campo a campo) y es el perfil por defecto. OPERATIVO_62 fue la hipotesis previa (Fase 5-8.7, basada en captura.csv) y quedo contradicha en varios aspectos fisicos; se mantiene disponible solo por historial. Este schema documenta el contrato de configuracion, no el archivo fisico final en si (ese es simplemente texto plano segun el perfil, delimitado segun 'delimitador').",
+  "type": "object",
+  "required": ["perfil_default", "tolerancia_diferencia_clp", "perfiles"],
+  "properties": {
+    "perfil_default": { "type": "string" },
+    "tolerancia_diferencia_clp": { "type": "number", "minimum": 0 },
+    "perfiles": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/Perfil" }
+    }
+  },
+  "definitions": {
+    "Perfil": {
+      "type": "object",
+      "required": ["formato_importador_validado", "conciliacion_bancaria_validada", "total_columnas", "formato_fecha", "valor_relleno_no_utilizado", "posiciones"],
+      "properties": {
+        "formato_importador_validado": {
+          "type": "boolean",
+          "description": "true solo si existe evidencia real de que ESTE formato fisico (delimitador, encoding, encabezado, comillas, saltos de linea, formato de fecha) fue aceptado por el mismo importador Softland en una carga exitosa (ej. OPERATIVO_62 via captura.csv). No implica que una conciliacion bancaria real ya haya sido cargada -- ver 'conciliacion_bancaria_validada'."
+        },
+        "conciliacion_bancaria_validada": {
+          "type": "boolean",
+          "description": "true solo si una conciliacion bancaria real, generada por este plugin, ya fue cargada y validada exitosamente en Softland. Es un hecho independiente de 'formato_importador_validado': el formato puede estar confirmado por otro contenido contable (ej. compras) sin que el flujo de conciliacion bancaria en si ya se haya probado end-to-end."
+        },
+        "total_columnas": { "type": "integer", "minimum": 1 },
+        "formato_fecha": {
+          "type": "string",
+          "enum": ["DD-MM-AAAA", "DD/MM/AAAA"],
+          "description": "Formato fisico de fecha de este perfil. La conversion desde el 'DD/MM/AAAA' que entrega LineaSoftland es responsabilidad exclusiva del exportador, nunca de transform.py."
+        },
+        "delimitador": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1,
+          "description": "Caracter delimitador entre columnas fisicas de este perfil (Fase 8.8). Ningun valor de campo puede contenerlo (ver export_softland._validar_texto_serializable). Por defecto ',' si se omite. OFICIAL_61: ';' (evidencia real directa, Fase 8.8). OPERATIVO_62: ',' (hipotesis previa, sin este campo explicito)."
+        },
+        "con_bom": {
+          "type": "boolean",
+          "description": "true si este perfil debe serializarse con BOM UTF-8 (3 bytes EF BB BF) al inicio del archivo. Por defecto false si se omite. OFICIAL_61: true (evidencia real directa, Fase 8.8)."
+        },
+        "trailing_delimitador": {
+          "type": "boolean",
+          "description": "true si cada fila debe terminar con un delimitador extra tras la ultima columna (produciendo un campo CSV final vacio al parsear). Por defecto true si se omite (comportamiento historico de OPERATIVO_62, respaldado por captura.csv). OFICIAL_61: false (evidencia real directa, Fase 8.8: el archivo real termina exactamente en la columna 61, sin delimitador final)."
+        },
+        "valor_relleno_no_utilizado": {
+          "description": "Valor fisico INICIAL para posiciones que este perfil documenta pero que ningun campo semantico de LineaSoftland llega a poblar explicitamente en construir_fila() (relleno generico, no un valor de negocio). Cualquier posicion que SI sea poblada explicitamente por un campo semantico (via 'posiciones'/'valores_catalogo') conserva su propio valor real -- incluyendo un cero semantico legitimo (ej. DIFERENCIA_TRANSBANK.debe/haber) -- independientemente de este valor. OPERATIVO_62: '' (vacio, Fase 8.4, hipotesis previa basada en captura.csv). OFICIAL_61: '0' (string, Fase 8.8, evidencia real directa: la mayoria de posiciones numericas no utilizadas en el archivo real son '0', nunca vacio; los campos de texto no utilizados se resuelven aparte via 'valores_catalogo')."
+        },
+        "posiciones": {
+          "type": "object",
+          "description": "Mapa tipo_linea -> {campo_semantico -> numero de columna fisica (1-indexado)}. Indexado por tipo_linea porque un mismo campo semantico (ej. tipo_docto_conciliacion) puede caer en una columna fisica distinta segun si la linea es BANCO, CLIENTE o DIFERENCIA_TRANSBANK (confirmado por Contabilidad, Fase 7.3). Solo declara los campos que REALMENTE aplican a ese tipo_linea (Fase 8.7/8.8): BANCO nunca mapea 'haber' ni 'auxiliar'; CLIENTE nunca mapea 'debe'. Solo los campos listados en export_softland.CAMPOS_SEMANTICOS son efectivamente poblados por construir_fila().",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "posiciones_catalogo": {
+          "type": "object",
+          "description": "Mapa campo_documental -> numero de columna fisica, independiente de tipo_linea, para posiciones documentadas del layout que ningun tipo_linea completa actualmente. Por defecto quedan en valor_relleno_no_utilizado, salvo las listadas en 'valores_catalogo'. Puede incluir una clave '_nota' de texto libre, ignorada por el codigo.",
+          "additionalProperties": { "type": ["integer", "string"], "minimum": 1 }
+        },
+        "valores_catalogo": {
+          "type": "object",
+          "description": "Mapa campo_de_posiciones_catalogo -> valor fisico literal propio de este flujo (ej. '', 'N', 'S'), en reemplazo del valor_relleno_no_utilizado generico para ese campo. Semantico y por-campo, nunca un booleano 'vacio si/no': permite expresar cualquier literal confirmado sin cambiar el mecanismo cuando cambie la evidencia (ver historial en rules/softland-layouts.json). Puede incluir una clave '_nota' de texto libre, ignorada por el codigo (export_softland.construir_fila la salta explicitamente).",
+          "additionalProperties": { "type": "string" }
+        },
+        "valores_fijos_por_posicion": {
+          "type": "object",
+          "description": "Mapa tipo_linea -> {numero_de_posicion (string) -> valor fisico literal}, para posiciones que NO forman parte de 'posiciones[tipo_linea]' ni de 'posiciones_catalogo', pero que Softland exige con un valor fijo especifico segun evidencia real (Fase 8.9: reporte del Capturador de Transacciones de Softland). Distinto de 'valores_catalogo' porque esta indexado por tipo_linea (el mismo numero de posicion puede necesitar valores distintos, o ninguno, segun si la linea es BANCO/CLIENTE/DIFERENCIA_TRANSBANK). Puede incluir una clave '_nota' de texto libre a nivel raiz, ignorada por el codigo.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "pendiente_validacion_productiva": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Nombres de posiciones (ver 'posiciones') cuya representacion fisica (0 vs vacio, etc.) sigue sin confirmarse para nuestro flujo especifico mediante una carga real. No se resuelve automaticamente aqui."
+        }
+      }
+    }
+  }
+}
