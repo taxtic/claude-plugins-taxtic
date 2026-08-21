@@ -22,6 +22,7 @@ Desde Claude Code (App o CMD):
 | `asesoria-normativa` | Asesoría | Resúmenes circulares SII. Checklist F29. Q&A normativa. |
 | `contabilidad-rendiciones` | Contabilidad | Extrae rendiciones de caja chica (PDF) a CSV + Excel. Audita coherencia. |
 | `asesoria-informe-tributario` | Asesoría | Informe tributario (F29, F22, balance, ficha, malla) en Word + Excel. Extracción determinista en Python; la IA no inventa cifras. |
+| `contabilidad-softland` | Contabilidad | Conciliación bancaria BCI -> CSV de carga para Softland (Captura de Movimientos Mensuales, perfil OFICIAL_61). Aprobación humana obligatoria antes de exportar. |
 
 ## Soporte
 

@@ -262,11 +262,11 @@ def test_linea_cliente_cuenta():
 
 
 def test_linea_cliente_auxiliar_rut_normalizado():
-    """Confirmado por Contabilidad (Fase 8.9), con evidencia real de
-    Softland ('El Auxiliar "774957936" NO existe o esta inactivo'): el
-    Codigo Auxiliar de Softland esta configurado SIN digito verificador --
-    se quita el ultimo caracter del RUT normalizado (que siempre trae el DV
-    pegado al final) exclusivamente para este campo."""
+    """Confirmado por Contabilidad, con evidencia real de Softland ('El
+    Auxiliar "765432101" NO existe o esta inactivo'): el Codigo Auxiliar de
+    Softland se utiliza SIN digito verificador -- se quita el ultimo
+    caracter del RUT normalizado (que siempre trae el DV pegado al final)
+    exclusivamente para este campo."""
     m = _movimiento(asignaciones=[_asignacion(rut_cliente="765432101")], ruts_banco=["765432101"])
     r = _resultado(m)
     d = _decision(m["movimiento_id"])

@@ -353,7 +353,18 @@ def serializar_lineas(lineas, perfil, tolerancia=0):
 def exportar(lineas, nombre_perfil=None, layouts=None):
     """API principal. Recibe SOLO lineas ya transformadas (salida de
     transform.py, que a su vez solo produce lineas para APTO+APROBADO) --
-    no reconstruye ninguna logica de aprobacion humana aqui."""
+    no reconstruye ninguna logica de aprobacion humana aqui. Falla explicito
+    si 'lineas' esta vacio: nunca genera un CSV vacio en silencio (ej. si
+    por error se le pasa un JSON de --preview de transform.py, que usa la
+    clave 'previstos' en vez de 'transformados', o un lote sin ningun
+    movimiento aprobado)."""
+    if not lineas:
+        raise ExportError(
+            "SIN_LINEAS_QUE_EXPORTAR",
+            "No hay ninguna LineaSoftland para exportar. Un JSON de 'transform.py --preview' "
+            "(clave 'previstos') no es una entrada valida para la exportacion final -- esta "
+            "funcion solo exporta lineas ya transformadas y aprobadas (clave 'transformados').",
+        )
     layouts = layouts if layouts is not None else _cargar_layouts()
     nombre_perfil = nombre_perfil or layouts.get("perfil_default")
     perfil = _obtener_perfil(layouts, nombre_perfil)

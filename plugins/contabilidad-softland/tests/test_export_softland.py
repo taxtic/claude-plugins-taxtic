@@ -1125,3 +1125,68 @@ def test_golden_fixture_operativo_62_bytes_exactos():
     with open(ruta_esperado, "rb") as f:
         esperado_bytes = f.read()
     assert contenido.encode("utf-8") == esperado_bytes
+
+
+# --- exportar sin lineas: nunca un CSV vacio en silencio ---
+
+def test_exportar_lista_vacia_falla_explicito():
+    try:
+        es.exportar([], "OFICIAL_61", _layouts())
+        assert False, "debia fallar"
+    except es.ExportError as e:
+        assert e.codigo == "SIN_LINEAS_QUE_EXPORTAR"
+
+
+def test_exportar_lista_vacia_falla_con_perfil_default():
+    """La guarda vive en exportar() (la funcion reutilizable), no solo en
+    la CLI -- falla igual sin pasar --perfil explicito."""
+    try:
+        es.exportar([], layouts=_layouts())
+        assert False, "debia fallar"
+    except es.ExportError as e:
+        assert e.codigo == "SIN_LINEAS_QUE_EXPORTAR"
+
+
+def test_cli_json_de_preview_sin_transformados_falla_y_no_crea_csv(tmp_path):
+    """Reproduce el caso real de riesgo: alimentar accidentalmente a
+    export_softland.py un JSON de transform.py --preview (clave
+    'previstos', nunca 'transformados'). Debe fallar explicito -- exit
+    distinto de 0, y --out nunca debe crearse."""
+    import json as _json
+    entrada = tmp_path / "04_preview.json"
+    entrada.write_text(_json.dumps({
+        "previstos": {"mov-000001": [{"tipo_linea": "BANCO", "debe": 100, "haber": 0}]},
+        "excluidos": [],
+    }), encoding="utf-8")
+    salida = tmp_path / "no_deberia_existir.csv"
+
+    codigo = es.main([str(entrada), "--perfil", "OFICIAL_61", "--out", str(salida)])
+
+    assert codigo != 0
+    assert not salida.exists()
+    assert not (tmp_path / (salida.name + ".tmp")).exists()
+
+
+def test_cli_lote_sin_transformados_falla_y_no_crea_csv(tmp_path):
+    """Un lote de transform.py (camino normal) sin ningun movimiento
+    aprobado ({'transformados': {}, 'excluidos': [...]}) tambien debe
+    fallar explicito, no generar un CSV vacio."""
+    import json as _json
+    entrada = tmp_path / "05_lineas.json"
+    entrada.write_text(_json.dumps({
+        "transformados": {},
+        "excluidos": [{"movimiento_id": "mov-000001", "motivo": "SIN_DECISION_HUMANA"}],
+    }), encoding="utf-8")
+    salida = tmp_path / "no_deberia_existir.csv"
+
+    codigo = es.main([str(entrada), "--perfil", "OFICIAL_61", "--out", str(salida)])
+
+    assert codigo != 0
+    assert not salida.exists()
+
+
+def test_exportar_valido_no_se_ve_afectado_por_la_guarda():
+    """La guarda no cambia el comportamiento de una exportacion valida."""
+    lineas = _lineas_caso_simple()
+    contenido = es.exportar(lineas, "OFICIAL_61", _layouts())
+    assert contenido  # no lanza, comportamiento intacto

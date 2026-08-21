@@ -12,7 +12,7 @@
     "diferencia_transbank": "96689310"
   },
   "auxiliares_variables": {
-    "_nota": "Estos auxiliares no son un valor literal fijo (a diferencia de auxiliares_fijos): se derivan por movimiento desde un campo ya presente en el Movimiento/Asignacion normalizados. CORREGIDO en Fase 8.9 con evidencia real de Softland ('El Auxiliar \"774957936\" NO existe o esta inactivo'): el Codigo Auxiliar de Softland esta configurado SIN digito verificador. Ejemplo cliente: RUT '76.123.456-7' -> Asignacion.rut_cliente = '761234567' (normalize.py, CON DV, sin puntos ni guion) -> transform.py._rut_sin_dv() quita el ultimo caracter EXCLUSIVAMENTE para el campo Auxiliar de Softland -> auxiliar = '76123456' (SIN DV). El RUT completo con DV se sigue usando sin cambios en cualquier otro lugar (Movimiento, Asignacion, glosas).",
+    "_nota": "Estos auxiliares no son un valor literal fijo (a diferencia de auxiliares_fijos): se derivan por movimiento desde un campo ya presente en el Movimiento/Asignacion normalizados. Confirmado con evidencia real de Softland ('El Auxiliar \"765432101\" NO existe o esta inactivo'): el Codigo Auxiliar de Softland se utiliza SIN digito verificador. Ejemplo (RUT ficticio, ya usado en tests): Asignacion.rut_cliente = '765432101' (normalize.py, CON DV, sin puntos ni guion) -> transform.py._rut_sin_dv() quita el ultimo caracter EXCLUSIVAMENTE para el campo Auxiliar de Softland -> auxiliar = '76543210' (SIN DV). El RUT completo con DV se sigue usando sin cambios en cualquier otro lugar (Movimiento, Asignacion, glosas).",
     "cliente": "rut_cliente_normalizado"
   },
   "tipos_documento": {

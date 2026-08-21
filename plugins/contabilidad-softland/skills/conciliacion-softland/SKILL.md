@@ -79,7 +79,7 @@ pipeline documentado en esta sección.
 ### Directorio de ejecución: raíz del plugin
 
 Todos los comandos `.\scripts\...` deben ejecutarse desde la **raíz del plugin**
-`softland-conciliacion` — el directorio que contiene `scripts\`, `rules\`, `schemas\` y `skills\`.
+`contabilidad-softland` — el directorio que contiene `scripts\`, `rules\`, `schemas\` y `skills\`.
 La carpeta `skills\conciliacion-softland\` (donde vive este `SKILL.md`) **no** es el directorio de
 ejecución de los scripts, solo contiene la documentación de la skill.
 
@@ -87,7 +87,7 @@ Si se conoce la ruta de la carpeta que contiene este `SKILL.md`, la raíz del pl
 dos niveles arriba (`skills\conciliacion-softland\` → `..\..`).
 
 ```powershell
-$pluginDir = <raíz de softland-conciliacion resuelta para esta corrida>   # no hardcodear una ruta fija
+$pluginDir = <raíz de contabilidad-softland resuelta para esta corrida>   # no hardcodear una ruta fija
 Set-Location $pluginDir
 
 if (-not (Test-Path "$pluginDir\scripts\read_excel.py")) { <detenerse aquí> }
@@ -104,7 +104,7 @@ como regla general de esta skill.
 ### CLI exacta (PowerShell)
 
 ```powershell
-$WD = Join-Path $env:TEMP ("softland-conciliacion-" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+$WD = Join-Path $env:TEMP ("contabilidad-softland-" + (Get-Date -Format "yyyyMMdd_HHmmss"))
 New-Item -ItemType Directory -Path $WD -Force | Out-Null
 
 python .\scripts\read_excel.py "C:\ruta\archivo.xlsx" --out "$WD\01_raw.json"
@@ -291,7 +291,7 @@ real que debe investigarse, no algo que la skill deba resolver por su cuenta.
 
 - `rules/taxtic.json` — cuentas contables, auxiliares fijos/variables, tipos de documento, glosas.
   El **Código Auxiliar de Cliente en Softland es el RUT normalizado SIN dígito verificador**
-  (confirmado con evidencia real de Softland, Fase 8.9) — `transform.py` ya aplica esta regla, no
+  (confirmado con evidencia real de Softland) — `transform.py` ya aplica esta regla, no
   la repitas manualmente.
 - `rules/softland-layouts.json` — perfil de exportación físico. **`OFICIAL_61` es el perfil por
   defecto y el único validado end-to-end en Softland real** (ver alcance exacto abajo). No cambies
@@ -303,7 +303,7 @@ real que debe investigarse, no algo que la skill deba resolver por su cuenta.
 
 ## 4. Alcance real validado (no generalizar)
 
-Confirmado con carga real en Softland (Fase 8.8 a 8.16):
+Confirmado con carga real en Softland:
 
 - Formato físico del perfil `OFICIAL_61`: 61 columnas, delimitador `;`, BOM UTF-8, sin campo final
   vacío, CRLF, fechas `DD/MM/AAAA`.

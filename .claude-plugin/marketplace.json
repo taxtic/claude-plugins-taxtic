@@ -39,6 +39,11 @@
       "name": "asesoria-informe-tributario",
       "source": "./plugins/asesoria-informe-tributario",
       "description": "Informe tributario (F29, F22, balance, ficha, malla) en Word + Excel. Extracción determinista en Python; la IA no inventa cifras."
+    },
+    {
+      "name": "contabilidad-softland",
+      "source": "./plugins/contabilidad-softland",
+      "description": "Conciliación bancaria BCI -> CSV para la Captura de Movimientos Mensuales de Softland (perfil OFICIAL_61), con aprobación humana obligatoria antes de exportar."
     }
   ]
 }
