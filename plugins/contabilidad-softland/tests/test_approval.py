@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import json
 import os
 
 
@@ -409,3 +410,397 @@ def test_revision_multi_rut_con_informacion_parcial_no_aprobable():
         assert False, "debia fallar: REVISION no es aprobable aunque tenga informacion parcial"
     except ValueError:
         pass
+
+
+# --- preparar_revision incluye banco/descripcion_banco/tipo_pago/cuadratura_exacta,
+# para que la revision humana no necesite abrir 02_normalizado.json ni 03_validado.json ---
+
+def test_preparar_revision_incluye_banco_y_descripcion_banco():
+    m = _movimiento(banco="BCI")
+    r = _resultado(m)
+    rev = ap.preparar_revision(m, r)
+    assert rev["banco"] == "BCI"
+    assert rev["descripcion_banco"] == "MENSUALIDAD JULIO 26"
+
+
+def test_preparar_revision_incluye_tipo_pago_y_cuadratura_exacta():
+    m = _movimiento()
+    r = _resultado(m)
+    rev = ap.preparar_revision(m, r)
+    assert rev["tipo_pago"] == r["tipo_pago"]
+    assert rev["cuadratura_exacta"] == r["validaciones"]["cuadratura_exacta"]
+
+
+def test_preparar_revision_no_duplica_numero_conciliacion():
+    """numero_conciliacion no se agrega como campo propio -- ya viaja dentro
+    de lineas_previstas (numero_docto_conciliacion de la linea BANCO)."""
+    m = _movimiento()
+    r = _resultado(m)
+    rev = ap.preparar_revision(m, r)
+    assert "numero_conciliacion" not in rev
+
+
+# --- preparar_revision(..., lineas_previstas) / approval.py preparar --preview ---
+
+LINEA_EJEMPLO = {
+    "movimiento_id": "mov-000003", "tipo_linea": "BANCO", "orden": 1,
+    "cuenta": "10-01-003", "debe": 100000, "haber": 0, "glosa": "PAGO CLIENTE CLIENTE UNO SPA F1001",
+    "auxiliar": 0, "tipo_documento": 0, "numero_documento": 0, "fecha_emision": 0,
+    "fecha_vencimiento": 0, "tipo_docto_conciliacion": "TB", "numero_docto_conciliacion": 1,
+    "numero_docto_referencia": 0, "campos_1_a_61": {str(n): 0 for n in range(1, 62)},
+    "filas_excel_origen": [3],
+}
+
+
+def test_preparar_revision_sin_preview_no_agrega_lineas_previstas():
+    m = _movimiento()
+    r = _resultado(m)
+    rev = ap.preparar_revision(m, r)
+    assert "lineas_previstas" not in rev
+
+
+def test_preparar_revision_con_lineas_previstas_las_copia_verbatim():
+    m = _movimiento()
+    r = _resultado(m)
+    lineas = [copy.deepcopy(LINEA_EJEMPLO)]
+    rev = ap.preparar_revision(m, r, lineas_previstas=lineas)
+    assert rev["lineas_previstas"] == lineas
+    # no duplica ni reordena el resto del objeto existente
+    assert rev["movimiento_id"] == m["movimiento_id"]
+    assert rev["puede_aprobar"] == (r["estado_motor"] == "APTO")
+
+
+def test_preparar_revision_no_recalcula_las_lineas_previstas():
+    """No debe alterar ningun valor de las lineas entregadas -- ni
+    recalcular, ni reformatear, ni normalizar."""
+    m = _movimiento()
+    r = _resultado(m)
+    lineas = [copy.deepcopy(LINEA_EJEMPLO)]
+    original = copy.deepcopy(lineas)
+    rev = ap.preparar_revision(m, r, lineas_previstas=lineas)
+    assert rev["lineas_previstas"] == original
+    assert lineas == original  # tampoco muta el argumento de entrada
+
+
+def _preview_json(tmp_path, previstos):
+    ruta = tmp_path / "preview.json"
+    ruta.write_text(json.dumps({"previstos": previstos, "excluidos": []}), encoding="utf-8")
+    return str(ruta)
+
+
+def test_cli_preparar_con_preview_agrega_lineas_previstas(tmp_path):
+    m = _movimiento()
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(json.dumps({"resultados": [r]}), encoding="utf-8")
+    lineas = [copy.deepcopy(LINEA_EJEMPLO)]
+    lineas[0]["movimiento_id"] = m["movimiento_id"]
+    preview_path = _preview_json(tmp_path, {m["movimiento_id"]: lineas})
+    out_path = tmp_path / "revision.json"
+
+    codigo = ap.main(["preparar", str(mov_path), str(res_path), m["movimiento_id"],
+                       "--preview", preview_path, "--out", str(out_path)])
+    assert codigo == 0
+    revision = json.loads(out_path.read_text(encoding="utf-8"))
+    assert revision["lineas_previstas"] == lineas
+
+
+def test_cli_preparar_con_preview_invalido_falla_duro(tmp_path):
+    m = _movimiento()
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(json.dumps({"resultados": [r]}), encoding="utf-8")
+    preview_path = tmp_path / "preview_invalido.json"
+    preview_path.write_text(json.dumps({"transformados": {}}), encoding="utf-8")  # clave equivocada
+    out_path = tmp_path / "revision.json"
+
+    codigo = ap.main(["preparar", str(mov_path), str(res_path), m["movimiento_id"],
+                       "--preview", str(preview_path), "--out", str(out_path)])
+    assert codigo != 0
+    assert not out_path.exists()
+
+
+def test_cli_preparar_con_preview_sin_movimiento_falla_duro(tmp_path):
+    m = _movimiento()
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(json.dumps({"resultados": [r]}), encoding="utf-8")
+    preview_path = _preview_json(tmp_path, {"otro-movimiento": [copy.deepcopy(LINEA_EJEMPLO)]})
+    out_path = tmp_path / "revision.json"
+
+    codigo = ap.main(["preparar", str(mov_path), str(res_path), m["movimiento_id"],
+                       "--preview", preview_path, "--out", str(out_path)])
+    assert codigo != 0
+    assert not out_path.exists()
+
+
+def test_cli_preparar_con_preview_cero_lineas_falla_duro(tmp_path):
+    m = _movimiento()
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(json.dumps({"resultados": [r]}), encoding="utf-8")
+    preview_path = _preview_json(tmp_path, {m["movimiento_id"]: []})
+    out_path = tmp_path / "revision.json"
+
+    codigo = ap.main(["preparar", str(mov_path), str(res_path), m["movimiento_id"],
+                       "--preview", preview_path, "--out", str(out_path)])
+    assert codigo != 0
+    assert not out_path.exists()
+
+
+def test_cargar_lineas_previstas_codigos_de_error(tmp_path):
+    preview_path = tmp_path / "preview.json"
+    preview_path.write_text(json.dumps({"transformados": {}}), encoding="utf-8")
+    try:
+        ap._cargar_lineas_previstas(str(preview_path), "mov-000001")
+        assert False, "debia fallar"
+    except ap.RevisionError as e:
+        assert e.codigo == "PREVIEW_INVALIDO"
+
+    preview_path.write_text(json.dumps({"previstos": {}}), encoding="utf-8")
+    try:
+        ap._cargar_lineas_previstas(str(preview_path), "mov-000001")
+        assert False, "debia fallar"
+    except ap.RevisionError as e:
+        assert e.codigo == "MOVIMIENTO_NO_ENCONTRADO_EN_PREVIEW"
+
+    preview_path.write_text(json.dumps({"previstos": {"mov-000001": []}}), encoding="utf-8")
+    try:
+        ap._cargar_lineas_previstas(str(preview_path), "mov-000001")
+        assert False, "debia fallar"
+    except ap.RevisionError as e:
+        assert e.codigo == "SIN_LINEAS_PREVISTAS"
+
+
+# --- formatear_revision_humana(): bloque de texto ya armado, sin que la
+# Skill tenga que interpretar el JSON (ConvertFrom-Json/Write-Host/loops) ---
+
+LINEA_BANCO_DOS = {
+    "movimiento_id": "mov-000003", "tipo_linea": "BANCO", "orden": 1,
+    "cuenta": "10-01-003", "debe": 100000, "haber": 0,
+    "glosa": "PAGO CLIENTE  F32007-33100",  # doble espacio real (nombre_cliente vacio)
+    "auxiliar": 0, "tipo_documento": 0, "numero_documento": 0, "fecha_emision": 0,
+    "fecha_vencimiento": 0, "tipo_docto_conciliacion": "TB", "numero_docto_conciliacion": 1,
+    "numero_docto_referencia": 0, "campos_1_a_61": {str(n): 0 for n in range(1, 62)},
+    "filas_excel_origen": [3],
+}
+LINEA_CLIENTE_DOS_A = {
+    "movimiento_id": "mov-000003", "tipo_linea": "CLIENTE", "orden": 2,
+    "cuenta": "10-02-001", "debe": 0, "haber": 30000, "glosa": "PAGO F 32007",
+    "auxiliar": "76543210", "tipo_documento": "20", "numero_documento": 32007,
+    "fecha_emision": "01/07/2026", "fecha_vencimiento": "01/07/2026",
+    "tipo_docto_conciliacion": "TB", "numero_docto_conciliacion": 0,
+    "numero_docto_referencia": 32007, "campos_1_a_61": {str(n): 0 for n in range(1, 62)},
+    "filas_excel_origen": [3],
+}
+LINEA_CLIENTE_DOS_B = {
+    "movimiento_id": "mov-000003", "tipo_linea": "CLIENTE", "orden": 3,
+    "cuenta": "10-02-001", "debe": 0, "haber": 70000, "glosa": "PAGO F 33100",
+    "auxiliar": "76543210", "tipo_documento": "20", "numero_documento": 33100,
+    "fecha_emision": "01/07/2026", "fecha_vencimiento": "01/07/2026",
+    "tipo_docto_conciliacion": "TB", "numero_docto_conciliacion": 0,
+    "numero_docto_referencia": 33100, "campos_1_a_61": {str(n): 0 for n in range(1, 62)},
+    "filas_excel_origen": [3],
+}
+LINEAS_DOS = [LINEA_BANCO_DOS, LINEA_CLIENTE_DOS_A, LINEA_CLIENTE_DOS_B]
+
+
+def test_formatear_revision_humana_usa_los_datos_de_preparar_revision():
+    m = _movimiento(fila_origen=3, banco="BCI")
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r, lineas_previstas=[copy.deepcopy(LINEA_BANCO_DOS)])
+    texto = ap.formatear_revision_humana(revision)
+    assert f"Movimiento: {revision['movimiento_id']}" in texto
+    assert f"Banco: {revision['banco']}" in texto
+    assert f"Fecha de pago: {revision['fecha_pago']}" in texto
+    assert f"Monto abono: {revision['monto_abono']}" in texto
+    assert f"Tipo de pago: {revision['tipo_pago']}" in texto
+    assert f"Cuadratura exacta: {revision['cuadratura_exacta']}" in texto
+
+
+def test_formatear_revision_humana_conserva_valores_del_preview_verbatim():
+    """La glosa con doble espacio debe quedar exactamente igual, sin trim
+    ni normalizacion de espacios."""
+    m = _movimiento(fila_origen=3)
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r, lineas_previstas=[copy.deepcopy(LINEA_BANCO_DOS)])
+    texto = ap.formatear_revision_humana(revision)
+    assert "glosa=PAGO CLIENTE  F32007-33100" in texto  # doble espacio preservado literal
+    assert "cuenta=10-01-003  debe=100000  haber=0" in texto
+
+
+def test_formatear_revision_humana_no_omite_campos_obligatorios():
+    m = _movimiento(fila_origen=3)
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r, lineas_previstas=[copy.deepcopy(LINEA_BANCO_DOS)])
+    texto = ap.formatear_revision_humana(revision)
+    for etiqueta in (
+        "Movimiento:", "Fecha de pago:", "Banco:", "Monto abono:", "Origen del pago:",
+        "Descripcion bancaria:", "Estado motor:", "Tipo de pago:", "Cuadratura exacta:",
+        "Suma asignaciones:", "Diferencia:", "Puede aprobar:",
+    ):
+        assert etiqueta in texto
+    for campo_linea in (
+        "cuenta=", "debe=", "haber=", "glosa=", "auxiliar=", "tipo_documento=",
+        "numero_documento=", "fecha_emision=", "fecha_vencimiento=",
+        "tipo_docto_conciliacion=", "numero_docto_conciliacion=", "numero_docto_referencia=",
+    ):
+        assert campo_linea in texto
+
+
+def test_formatear_revision_humana_no_inventa_nombre_cliente_ausente():
+    m = _movimiento(fila_origen=3, nombres_banco=[None])
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r, lineas_previstas=[copy.deepcopy(LINEA_BANCO_DOS)])
+    texto = ap.formatear_revision_humana(revision)
+    assert "nombre no informado en el Excel y no inferido" in texto
+
+
+def test_formatear_revision_humana_caso_dos_lineas_multifactura():
+    """Movimiento de prueba con mas de una linea CLIENTE (multifactura)."""
+    m = _movimiento(fila_origen=3)
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r, lineas_previstas=copy.deepcopy(LINEAS_DOS))
+    texto = ap.formatear_revision_humana(revision)
+    assert "Linea 1 [BANCO]" in texto
+    assert "Linea 2 [CLIENTE]" in texto
+    assert "Linea 3 [CLIENTE]" in texto
+    assert "glosa=PAGO F 32007" in texto
+    assert "glosa=PAGO F 33100" in texto
+    assert "glosa=PAGO CLIENTE  F32007-33100" in texto  # doble espacio
+
+
+# --- seccion "Asignaciones:" -- detalle documental real (caso mov-000001/CLAUDIO.xlsx) ---
+
+def test_formatear_revision_humana_incluye_seccion_asignaciones():
+    m = _movimiento(fila_origen=1)
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r)
+    texto = ap.formatear_revision_humana(revision)
+    assert "Asignaciones:" in texto
+
+
+def test_formatear_revision_humana_conserva_valores_reales_de_la_asignacion():
+    """Reproduce el caso real mov-000001/CLAUDIO.xlsx: FACTURA / 34174 / 61267
+    deben aparecer exactamente, tomados de revision['asignaciones'], no
+    inventados ni reconstruidos."""
+    asignacion = _asignacion(
+        bloque_indice=1, rut_cliente="776346659", nombre_cliente=None,
+        categoria_ingreso=None, tipo_documento="FACTURA", numero_documento=34174,
+        monto_aplicado=61267, texto_original_celda=34174,
+        requiere_revision=False, motivo_revision=None, fuente_respaldo=None,
+    )
+    m = _movimiento(fila_origen=1, monto_abono=61267, asignaciones=[asignacion],
+                     ruts_banco=["776346659"], nombres_banco=[None])
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r)
+    texto = ap.formatear_revision_humana(revision)
+
+    assert "tipo_documento=FACTURA" in texto
+    assert "numero_documento=34174" in texto
+    assert "monto_aplicado=61267" in texto
+    assert "rut_cliente=776346659" in texto
+    assert "requiere_revision=False" in texto
+    assert "motivo_revision=None" in texto
+    assert "fuente_respaldo=None" in texto
+
+
+def test_formatear_revision_humana_asignaciones_no_null_no_se_reemplazan():
+    """Si motivo_revision/fuente_respaldo vienen con contenido real (no
+    null), deben mostrarse tal cual, sin traducir ni resumir."""
+    asignacion = _asignacion(
+        requiere_revision=True, motivo_revision="TEXTO_NO_FACTURA",
+        fuente_respaldo="respaldo-test-001",
+    )
+    m = _movimiento(fila_origen=1, asignaciones=[asignacion])
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r)
+    texto = ap.formatear_revision_humana(revision)
+    assert "requiere_revision=True" in texto
+    assert "motivo_revision=TEXTO_NO_FACTURA" in texto
+    assert "fuente_respaldo=respaldo-test-001" in texto
+
+
+def test_formatear_revision_humana_asignaciones_es_independiente_de_lineas_previstas():
+    """La seccion Asignaciones: debe aparecer completa incluso si
+    lineas_previstas no se entrego (o si su contenido no coincide) -- no se
+    reconstruye la informacion documental a partir de las lineas contables."""
+    asignacion = _asignacion(tipo_documento="FACTURA", numero_documento=34174, monto_aplicado=61267)
+    m = _movimiento(fila_origen=1, asignaciones=[asignacion])
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r)  # sin lineas_previstas
+    texto = ap.formatear_revision_humana(revision)
+    assert "Lineas contables previstas: (no disponibles" in texto
+    assert "numero_documento=34174" in texto
+    assert "monto_aplicado=61267" in texto
+
+
+def test_formatear_revision_humana_sin_asignaciones():
+    m = _movimiento(fila_origen=1, asignaciones=[])
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r)
+    texto = ap.formatear_revision_humana(revision)
+    assert "Asignaciones: (ninguna)" in texto
+
+
+def test_formatear_revision_humana_no_muta_lineas_previstas_ni_asignaciones():
+    """La seccion 'Asignaciones:' se lee de revision['asignaciones'], pero
+    formatear_revision_humana() sigue siendo de solo lectura -- no debe
+    modificar ni 'asignaciones' ni 'lineas_previstas' del objeto recibido."""
+    asignacion = _asignacion(tipo_documento="FACTURA", numero_documento=34174, monto_aplicado=61267)
+    m = _movimiento(fila_origen=1, asignaciones=[asignacion])
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r, lineas_previstas=[copy.deepcopy(LINEA_BANCO_DOS)])
+    revision_antes = copy.deepcopy(revision)
+
+    ap.formatear_revision_humana(revision)
+
+    assert revision == revision_antes
+    assert revision["lineas_previstas"] == revision_antes["lineas_previstas"]
+    assert revision["asignaciones"] == revision_antes["asignaciones"]
+
+
+def test_formatear_revision_humana_resto_de_la_salida_no_cambia():
+    """El agregado de 'Asignaciones:' no debe alterar ninguna de las
+    secciones/campos ya existentes (regresion)."""
+    m = _movimiento(fila_origen=3)
+    r = _resultado(m)
+    revision = ap.preparar_revision(m, r, lineas_previstas=[copy.deepcopy(LINEA_BANCO_DOS)])
+    texto = ap.formatear_revision_humana(revision)
+    for etiqueta in (
+        "Movimiento:", "Fecha de pago:", "Banco:", "Monto abono:", "Origen del pago:",
+        "Descripcion bancaria:", "Estado motor:", "Tipo de pago:", "Cuadratura exacta:",
+        "Suma asignaciones:", "Diferencia:", "Puede aprobar:", "Clientes",
+        "Lineas contables PREVISTAS",
+    ):
+        assert etiqueta in texto
+    assert "glosa=PAGO CLIENTE  F32007-33100" in texto  # doble espacio intacto
+
+
+def test_cli_preparar_con_out_texto_escribe_bloque_verbatim(tmp_path):
+    m = _movimiento(fila_origen=3)
+    r = _resultado(m)
+    mov_path = tmp_path / "movimientos.json"
+    res_path = tmp_path / "resultados.json"
+    mov_path.write_text(json.dumps({"movimientos": [m]}), encoding="utf-8")
+    res_path.write_text(json.dumps({"resultados": [r]}), encoding="utf-8")
+    preview_path = _preview_json(tmp_path, {m["movimiento_id"]: copy.deepcopy(LINEAS_DOS)})
+    out_json = tmp_path / "revision.json"
+    out_texto = tmp_path / "revision.txt"
+
+    codigo = ap.main(["preparar", str(mov_path), str(res_path), m["movimiento_id"],
+                       "--preview", preview_path, "--out", str(out_json), "--out-texto", str(out_texto)])
+    assert codigo == 0
+
+    revision = json.loads(out_json.read_text(encoding="utf-8"))
+    texto_esperado = ap.formatear_revision_humana(revision)
+    assert out_texto.read_text(encoding="utf-8") == texto_esperado
+    assert "Linea 3 [CLIENTE]" in texto_esperado
