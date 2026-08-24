@@ -1,6 +1,6 @@
 {
   "name": "contabilidad-softland",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Conciliación bancaria BCI y generación de movimientos para Softland (Captura de Movimientos Mensuales). Pipeline completo: lectura, normalización, validación, aprobación humana, transformación contable y exportación CSV (perfil OFICIAL_61), validado end-to-end en Softland real para el escenario banco BCI + un cliente + SIMPLE + una factura + diferencia 0.",
   "author": { "name": "TAXTIC", "url": "https://github.com/TAXTIC" }
 }

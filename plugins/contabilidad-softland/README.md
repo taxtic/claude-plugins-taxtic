@@ -53,6 +53,12 @@ El pipeline determinista implementado hasta ahora:
    `movimiento_id` como defensa redundante antes de escribir cualquier archivo, rechaza
    explícitamente una lista de líneas vacía (nunca genera un CSV vacío en silencio), y escribe
    siempre de forma atómica (temporal + rename) para nunca dejar un CSV parcial ante un error.
+7. **`scripts/verificar_consistencia.py`** — gate determinista que compara, para un `movimiento_id`,
+   las `LineaSoftland[]` de `transform.py --preview` contra las del `transform.py` normal posterior
+   a la aprobación humana. Compara la estructura completa de cada línea (incluido `campos_1_a_61`,
+   sin excepciones); ante cualquier discrepancia reporta `movimiento_id`, número de línea (1-based),
+   campo o ruta del campo, y ambos valores en conflicto. No tiene modo por lote, no escribe ningún
+   archivo, y su contrato es únicamente el código de salida del proceso.
 
 **Confirmado con carga real en Softland** (ver "Limitaciones conocidas" para la evidencia
 completa del historial de intentos):
@@ -289,9 +295,10 @@ Ver [`rules/taxtic.json`](rules/taxtic.json) para los valores exactos.
 
 ## Versión
 
-0.2.0 — lectura, normalización, validación, previsualización determinística de líneas contables,
+0.3.0 — lectura, normalización, validación, previsualización determinística de líneas contables,
 aprobación humana, transformación a `LineaSoftland` y exportación CSV por perfiles
-OFICIAL_61/OPERATIVO_62, con validación calendárica real de fechas. Perfil `OFICIAL_61` validado
+OFICIAL_61/OPERATIVO_62, con validación calendárica real de fechas y verificación determinista de
+consistencia preview↔transform (`verificar_consistencia.py`) antes de exportar. Perfil `OFICIAL_61` validado
 end-to-end en Softland real para el escenario base banco BCI + un cliente + SIMPLE + una factura +
 diferencia 0. Alcance pendiente: extender la validación productiva a otros escenarios — múltiples
 facturas/clientes, TRANSBANK, diferencias, otros bancos, proveedores, cargos.
