@@ -7,7 +7,7 @@ Marketplace de plugins Claude Code para el equipo Taxtic (asesoría tributaria, 
 Desde Claude Code (App o CMD):
 
 ```
-/plugin marketplace add TAXTIC/claude-plugins-taxtic
+/plugin marketplace add taxtic/claude-plugins-taxtic
 /plugin install <nombre-plugin>@plugins-taxtic
 ```
 

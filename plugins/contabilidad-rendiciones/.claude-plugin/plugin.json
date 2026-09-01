@@ -2,5 +2,5 @@
   "name": "contabilidad-rendiciones",
   "version": "0.2.0",
   "description": "Extrae gastos de rendiciones de caja chica (PDF) a CSV + Excel orquestando un agente por PDF (contexto aislado para escaneos pesados). Salta hojas resumen y las usa como control. Audita coherencia y duplicados.",
-  "author": { "name": "TAXTIC", "url": "https://github.com/TAXTIC" }
+  "author": { "name": "TAXTIC", "url": "https://github.com/taxtic" }
 }

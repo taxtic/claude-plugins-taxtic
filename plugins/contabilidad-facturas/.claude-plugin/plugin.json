@@ -2,5 +2,5 @@
   "name": "contabilidad-facturas",
   "version": "0.1.0",
   "description": "Extrae datos estructurados de PDFs de facturas a CSV. Sugiere cuenta contable. Audita coherencia IVA/total.",
-  "author": { "name": "TAXTIC", "url": "https://github.com/TAXTIC" }
+  "author": { "name": "TAXTIC", "url": "https://github.com/taxtic" }
 }

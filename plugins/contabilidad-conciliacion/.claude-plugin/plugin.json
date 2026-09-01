@@ -2,5 +2,5 @@
   "name": "contabilidad-conciliacion",
   "version": "0.1.0",
   "description": "Conciliación bancaria (cartola CSV vs libro mayor CSV) y detección de movimientos anómalos.",
-  "author": { "name": "TAXTIC", "url": "https://github.com/TAXTIC" }
+  "author": { "name": "TAXTIC", "url": "https://github.com/taxtic" }
 }
