@@ -2,5 +2,5 @@
   "name": "rrhh-planilla",
   "version": "0.1.0",
   "description": "Valida planilla de remuneraciones (totales, descuentos legales, formato Previred) y compara mes a mes.",
-  "author": { "name": "TAXTIC", "url": "https://github.com/TAXTIC" }
+  "author": { "name": "TAXTIC", "url": "https://github.com/taxtic" }
 }

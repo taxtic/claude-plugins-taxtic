@@ -2,5 +2,5 @@
   "name": "asesoria-informe-tributario",
   "version": "0.1.0",
   "description": "Genera informes tributarios (F29, F22, balance, ficha, malla) en Word + Excel con extracción determinista en Python. Ningún monto lo genera la IA.",
-  "author": { "name": "TAXTIC", "url": "https://github.com/TAXTIC" }
+  "author": { "name": "TAXTIC", "url": "https://github.com/taxtic" }
 }
