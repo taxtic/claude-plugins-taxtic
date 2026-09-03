@@ -23,9 +23,13 @@ venv/
 fuente.json
 resumen.json
 respaldo-citas.md
-resumen-*.docx
-resumen-*.pdf
+resumen*.docx
+resumen*.pdf
 datos.json
 secciones.json
 informe*.docx
 anexo*.xlsx
+
+# Los fixtures de test si se versionan, aunque su nombre coincida: son data
+# inventada, no la salida de procesar un documento real.
+!**/tests/fixtures/**
