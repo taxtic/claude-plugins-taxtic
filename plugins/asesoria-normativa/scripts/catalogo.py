@@ -30,17 +30,25 @@ SECCIONES = {
 
 # El orden de emisión lo fija el perfil; el modelo elige qué secciones usar, no
 # en qué orden van. gestiones y a_verificar cierran siempre, en ese orden.
-_ORDEN_BASE = ("deroga", "tema", "alcance", "comparacion", "materia",
-               "caso_consultado", "procedimiento", "reglas_comunes", "novedades",
+# `caso_consultado` abre el documento porque enmarca todo lo demás: un oficio
+# responde una consulta concreta, y el criterio no se entiende sin el caso. Va
+# antes de `tema` sin afectar a los otros dos perfiles, que la prohíben.
+_ORDEN_BASE = ("caso_consultado", "deroga", "tema", "alcance", "comparacion",
+               "materia", "procedimiento", "reglas_comunes", "novedades",
                "plazos", "sanciones", "vigencia", "otra", "gestiones", "a_verificar")
 
+# Cada perfil clasifica las QUINCE secciones del catálogo. Dejar una sin
+# clasificar la vuelve invisible dos veces: el gate no la rechaza, porque solo
+# rechaza lo que está en `prohibidas`, y el orden de emisión no la conoce, así
+# que el builder la manda después de las secciones de cierre. Hay un test que
+# exige que la unión de las tres listas cubra el catálogo completo.
 PERFILES = {
     "circular": {
         "obligatorias": ("tema", "gestiones", "a_verificar"),
         "sugeridas": ("deroga", "alcance", "materia", "comparacion",
                       "reglas_comunes", "novedades", "vigencia", "plazos",
-                      "sanciones", "otra"),
-        "prohibidas": ("caso_consultado", "procedimiento"),
+                      "sanciones", "procedimiento", "otra"),
+        "prohibidas": ("caso_consultado",),
     },
     "resolucion": {
         "obligatorias": ("tema", "alcance", "procedimiento", "vigencia",
@@ -51,7 +59,8 @@ PERFILES = {
     },
     "oficio": {
         "obligatorias": ("caso_consultado", "tema", "gestiones", "a_verificar"),
-        "sugeridas": ("alcance", "novedades", "materia", "otra"),
+        "sugeridas": ("alcance", "novedades", "materia", "comparacion",
+                      "plazos", "sanciones", "vigencia", "otra"),
         "prohibidas": ("deroga", "procedimiento", "reglas_comunes"),
     },
 }

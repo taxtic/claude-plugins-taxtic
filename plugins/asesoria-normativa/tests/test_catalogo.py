@@ -57,3 +57,67 @@ def test_catalogo_de_subtitulos_cubre_los_del_documento_de_referencia():
     assert cat.SUBTITULOS["ambito"] == "Ámbito de aplicación"
     assert cat.SUBTITULOS["procedimiento"] == "Procedimiento"
     assert cat.SUBTITULOS["silencio"] == "Resolución y silencio administrativo"
+
+
+# --- Integridad del catálogo. Sin estas invariantes, una sección sin clasificar
+# --- pasa el gate y el builder la emite después de las secciones de cierre.
+
+def test_cada_perfil_clasifica_todas_las_secciones():
+    """Una sección sin clasificar es invisible dos veces: el gate no la rechaza
+    y el orden de emisión no la conoce."""
+    for tipo, perfil in cat.PERFILES.items():
+        clasificadas = (set(perfil["obligatorias"]) | set(perfil["sugeridas"])
+                        | set(perfil["prohibidas"]))
+        sin_clasificar = set(cat.SECCIONES) - clasificadas
+        assert not sin_clasificar, f"{tipo} deja sin clasificar: {sin_clasificar}"
+
+def test_las_tres_listas_de_cada_perfil_son_disjuntas():
+    for tipo, perfil in cat.PERFILES.items():
+        obligatorias = set(perfil["obligatorias"])
+        sugeridas = set(perfil["sugeridas"])
+        prohibidas = set(perfil["prohibidas"])
+        assert not obligatorias & sugeridas, tipo
+        assert not obligatorias & prohibidas, tipo
+        assert not sugeridas & prohibidas, tipo
+
+def test_ningun_perfil_nombra_una_seccion_inexistente():
+    for tipo, perfil in cat.PERFILES.items():
+        for lista in ("obligatorias", "sugeridas", "prohibidas"):
+            desconocidas = set(perfil[lista]) - set(cat.SECCIONES)
+            assert not desconocidas, f"{tipo}.{lista}: {desconocidas}"
+
+def test_el_orden_base_cubre_el_catalogo_completo():
+    """Una sección ausente del orden se emite después del cierre, sin error."""
+    assert set(cat.orden_de_emision("circular")) | set(
+        cat.PERFILES["circular"]["prohibidas"]) == set(cat.SECCIONES)
+
+def test_el_orden_de_emision_es_exactamente_lo_que_el_perfil_admite():
+    for tipo, perfil in cat.PERFILES.items():
+        admitidas = set(perfil["obligatorias"]) | set(perfil["sugeridas"])
+        assert set(cat.orden_de_emision(tipo)) == admitidas, tipo
+
+def test_el_orden_de_emision_nunca_incluye_una_prohibida():
+    for tipo, perfil in cat.PERFILES.items():
+        assert not set(cat.orden_de_emision(tipo)) & set(perfil["prohibidas"]), tipo
+
+def test_todas_las_secciones_declaran_bloques_validos():
+    bloques_conocidos = {"parrafo", "lista", "tabla", "nota", "callout", "subtitulo"}
+    for id_seccion, definicion in cat.SECCIONES.items():
+        admitidos = set(definicion["bloques"])
+        assert admitidos, id_seccion
+        assert admitidos <= bloques_conocidos, f"{id_seccion}: {admitidos}"
+
+def test_solo_materia_tiene_titulo_libre():
+    for tipo in cat.PERFILES:
+        for id_seccion in cat.SECCIONES:
+            titulo = cat.titulo_de(id_seccion, tipo)
+            if id_seccion == "materia":
+                assert titulo is None
+            elif id_seccion in cat.orden_de_emision(tipo):
+                assert titulo, f"{id_seccion} en {tipo} sin título de catálogo"
+
+def test_el_caso_consultado_abre_el_documento_del_oficio():
+    """Un oficio responde una consulta: el criterio no se entiende sin el caso."""
+    orden = cat.orden_de_emision("oficio")
+    assert orden[0] == "caso_consultado"
+    assert orden.index("caso_consultado") < orden.index("tema")
