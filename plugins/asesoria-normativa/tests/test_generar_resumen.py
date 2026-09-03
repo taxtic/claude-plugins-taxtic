@@ -169,3 +169,53 @@ def test_naranja_de_marca_en_el_titulo(tmp_path):
     documento = docx.Document(salida)
     encabezado = next(p for p in documento.paragraphs if p.text == "RESUMEN EJECUTIVO")
     assert str(encabezado.runs[0].font.color.rgb) == "D57A23"
+
+
+def test_la_vineta_es_un_cuadrado_naranja(tmp_path):
+    """El cuadrado es el símbolo de marca; el estilo nativo trae un punto negro."""
+    from docx.oxml.ns import qn
+    salida = str(tmp_path / "r.docx")
+    gr.construir_docx(FUENTE, RESUMEN, salida)
+    numeracion = docx.Document(salida).part.numbering_part.element
+    glifos, colores = set(), set()
+    for definicion in numeracion.findall(qn("w:abstractNum")):
+        nivel = definicion.find(qn("w:lvl"))
+        if nivel is None:
+            continue
+        texto = nivel.find(qn("w:lvlText"))
+        fuente = nivel.find(qn("w:rPr"))
+        if texto is not None:
+            glifos.add(texto.get(qn("w:val")))
+        if fuente is not None and fuente.find(qn("w:color")) is not None:
+            colores.add(fuente.find(qn("w:color")).get(qn("w:val")))
+    assert "▪" in glifos
+    assert gr.NARANJA in colores
+
+def test_una_fuente_sin_identidad_no_produce_un_titulo_falso(tmp_path):
+    """Sin esto el título salía "Circular N° 35 de None del SII"."""
+    import copy, pytest
+    for campo in ("tipo", "numero", "anio"):
+        fuente = copy.deepcopy(FUENTE)
+        fuente[campo] = None
+        with pytest.raises(gr.FuenteIncompleta) as e:
+            gr.titulo_del_documento(fuente)
+        assert campo in str(e.value)
+
+def test_un_bloque_desconocido_no_desaparece_en_silencio(tmp_path):
+    import copy, pytest
+    resumen = copy.deepcopy(RESUMEN)
+    resumen["secciones"][0]["bloques"][0] = {"tipo": "grafico", "texto": "x"}
+    with pytest.raises(ValueError) as e:
+        gr.construir_docx(FUENTE, resumen, str(tmp_path / "r.docx"))
+    assert "grafico" in str(e.value)
+
+def test_una_seccion_no_admitida_no_se_emite_despues_del_cierre(tmp_path):
+    """Caía al final del orden, o sea después de gestiones y a_verificar."""
+    import copy, pytest
+    resumen = copy.deepcopy(RESUMEN)
+    resumen["secciones"].append({"id": "caso_consultado", "bloques": [
+        {"tipo": "parrafo", "afirmacion": "citada", "texto": "x",
+         "cita": "a" * 45, "pagina": 1}]})
+    with pytest.raises(ValueError) as e:
+        gr.construir_docx(FUENTE, resumen, str(tmp_path / "r.docx"))
+    assert "caso_consultado" in str(e.value)

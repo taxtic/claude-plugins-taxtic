@@ -34,8 +34,19 @@ LEYENDA_IA = ("Este documento ha sido generado con apoyo de inteligencia artific
 _ASSETS = _os.path.join(_os.path.dirname(__file__), "..", "assets")
 
 
+class FuenteIncompleta(Exception):
+    """A fuente.json le falta un campo de identidad que el título necesita."""
+
+
 def titulo_del_documento(fuente):
     """Identidad del documento, ensamblada sin intervención del modelo."""
+    faltantes = [c for c in ("tipo", "numero", "anio") if not fuente.get(c)]
+    if faltantes:
+        # Sin esto el título salía como "Circular N° 35 de None del SII": una
+        # identidad falsa en la portada de un documento que va al cliente.
+        raise FuenteIncompleta(
+            "fuente.json no tiene " + ", ".join(faltantes)
+            + "; vuelve a correr la extracción en vez de editarlo a mano")
     nombre = NOMBRES_DE_TIPO.get(fuente["tipo"], fuente["tipo"].capitalize())
     return f"{nombre} N° {fuente['numero']} de {fuente['anio']} del SII"
 
@@ -96,6 +107,39 @@ def _agregar_parrafo(documento, texto, **estilo):
     return parrafo
 
 
+def _vineta_cuadrada(documento):
+    """Redefine la viñeta de List Bullet como un cuadrado naranja.
+
+    El estilo nativo trae un punto negro de la fuente Symbol. El cuadrado es el
+    símbolo de la marca, y este es el tercero de sus tres usos en el documento
+    —marcador de sección y barra del callout son los otros dos—. Se toca la
+    definición de numeración y no cada párrafo, así la lista sigue siendo una
+    lista de Word y sobrevive a que el usuario la edite o la continúe.
+    """
+    from docx.oxml.ns import qn
+    numeracion = documento.part.numbering_part.element
+    for definicion in numeracion.findall(qn("w:abstractNum")):
+        primer_nivel = definicion.find(qn("w:lvl"))
+        if primer_nivel is None:
+            continue
+        texto = primer_nivel.find(qn("w:lvlText"))
+        fuente = primer_nivel.find(qn("w:rPr"))
+        if texto is None or fuente is None:
+            continue
+        if texto.get(qn("w:val")) not in ("", "·", "•"):
+            continue
+        texto.set(qn("w:val"), "▪")  # ▪ cuadrado pequeño
+        for tipografia in fuente.findall(qn("w:rFonts")):
+            for atributo in ("w:ascii", "w:hAnsi", "w:cs"):
+                tipografia.set(qn(atributo), FUENTE_TIPOGRAFICA)
+        color = fuente.find(qn("w:color"))
+        if color is None:
+            from docx.oxml import OxmlElement
+            color = OxmlElement("w:color")
+            fuente.append(color)
+        color.set(qn("w:val"), NARANJA)
+
+
 def _agregar_lista(documento, items):
     # Lista nativa de Word, no un carácter de viñeta tecleado: sobrevive a que el
     # usuario edite, reordene o continúe la lista en el documento entregado.
@@ -104,6 +148,7 @@ def _agregar_lista(documento, items):
         parrafo = documento.add_paragraph(style="List Bullet")
         parrafo.paragraph_format.space_after = Pt(2)
         _escribir(parrafo, item["texto"])
+    _vineta_cuadrada(documento)
 
 
 def _agregar_callout(documento, bloque):
@@ -160,6 +205,10 @@ def _agregar_bloque(documento, bloque):
         _agregar_callout(documento, bloque)
     elif tipo == "tabla":
         _agregar_tabla(documento, bloque)
+    else:
+        # Nunca en silencio: es un constructor de entregables, y perder un
+        # bloque sin avisar deja un documento incompleto que nadie detecta.
+        raise ValueError(f"tipo de bloque que el builder no sabe emitir: {tipo!r}")
 
 
 def _agregar_encabezado_y_pie(documento):
@@ -189,7 +238,14 @@ def _ordenar_secciones(secciones, tipo):
     """
     orden = catalogo.orden_de_emision(tipo)
     posicion = {id_seccion: i for i, id_seccion in enumerate(orden)}
-    return sorted(secciones, key=lambda s: posicion.get(s["id"], len(orden)))
+    for seccion in secciones:
+        if seccion["id"] not in posicion:
+            # Sin esto caía al final del orden, o sea DESPUÉS de las secciones
+            # de cierre: el documento salía con las gestiones al medio.
+            raise ValueError(
+                f"'{seccion['id']}' no está admitida en un documento de tipo "
+                f"'{tipo}'; el resumen no pasó el gate")
+    return sorted(secciones, key=lambda s: posicion[s["id"]])
 
 
 def construir_docx(fuente, resumen, salida):
