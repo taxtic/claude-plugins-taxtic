@@ -5,21 +5,43 @@ archivo lo teclea el modelo: es la fuente de verdad contra la que se verifican
 las citas, y editarlo a mano invalida esa verificación.
 """
 import re
+import unicodedata
 
-_COMILLAS = {"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"}
-_GUIONES = {"\u2010": "-", "\u2011": "-", "\u2013": "-", "\u2014": "-", "\u2212": "-"}
-_RE_CORTE_DE_LINEA = re.compile(r"(?<=[^\W\d_])-\s*\n\s*(?=[^\W\d_])")
+_COMILLAS = {"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'",
+             "\u00ab": '"', "\u00bb": '"', "\u2039": "'", "\u203a": "'",
+             "\u201e": '"', "\u201f": '"', "\u2032": "'", "\u2033": '"'}
+_GUIONES = {"\u2010": "-", "\u2011": "-", "\u2013": "-", "\u2014": "-",
+            "\u2212": "-", "\u00ad": "-", "\uff0d": "-", "\u2043": "-"}
+# El ordinal masculino y el signo de grado conviven en un mismo documento:
+# "Circular N\u00ba 35" junto a "art\u00edculo 6\u00b0".
+_ORDINALES = {"\u00ba": "\u00b0"}
+_CARACTERES_DE_COMILLA = ('"', "'", "`")
+# El corte de maquetado es un guion de division pegado al salto de línea.
+# Solo cuentan los guiones que parten palabras: la raya y el semiraya son
+# puntuacion, y unir a traves de ellas pega dos palabras distintas y hace
+# desaparecer la segunda para el detector de datos. Aceptar espacio
+# arbitrario a ambos lados ademas empalmaria a traves de un quiebre de
+# parrafo, que no es un corte de palabra sino dos frases.
+_RE_CORTE_DE_LINEA = re.compile(
+    r"(?<=[^\W\d_])[-\u2010\u2011\u00ad][ \t]*\n[ \t]*(?=[^\W\d_])")
 _RE_ESPACIOS = re.compile(r"\s+")
 
 
 def normalizar_lectura(texto):
     """N1: para leer y para detectar cantidades. Conserva un espacio entre palabras."""
-    for original, reemplazo in {**_COMILLAS, **_GUIONES}.items():
+    # NFC primero: un mismo carácter acentuado puede venir precompuesto o
+    # descompuesto según el PDF, y sin unificarlo ninguna cita con tilde de
+    # ese documento haría match.
+    texto = unicodedata.normalize("NFC", texto)
+    for original, reemplazo in {**_COMILLAS, **_ORDINALES}.items():
         texto = texto.replace(original, reemplazo)
-    # une la palabra que el maquetado partió al final del renglón
+    # une la palabra que el maquetado partió al final del renglón; va antes de
+    # unificar los guiones para no confundir una raya de puntuación con un corte
     texto = _RE_CORTE_DE_LINEA.sub("", texto)
+    for original, reemplazo in _GUIONES.items():
+        texto = texto.replace(original, reemplazo)
     texto = _RE_ESPACIOS.sub(" ", texto)
-    return texto.strip().casefold()
+    return unicodedata.normalize("NFC", texto.strip().casefold())
 
 
 def normalizar_matching(texto):
@@ -30,7 +52,9 @@ def normalizar_matching(texto):
     esto los dos lados no convergen.
     """
     texto = normalizar_lectura(texto)
-    return texto.replace(" ", "").replace("-", "")
+    for caracter in (" ", "-", *_CARACTERES_DE_COMILLA):
+        texto = texto.replace(caracter, "")
+    return texto
 
 
 # El año NO está acá: no se detecta ni se pide, se deriva de fecha_documento.
@@ -58,7 +82,9 @@ _RE_FECHA_PALABRAS = re.compile(
     r"^\s*(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+((?:19|20)\d{2})\s*$", re.I)
 _RE_FECHA_NUMERICA = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-]((?:19|20)\d{2})\s*$")
 _RE_NUMERO = re.compile(r"^\d{1,6}$")
-_RE_MATERIA = re.compile(r"materia\s*:?\s*(.+?)(?:\n\s*\n|\Z)", re.I | re.S)
+# Los dos puntos son obligatorios: sin ellos engancha cualquier mención de
+# la palabra en el cuerpo, y esa cadena termina siendo la bajada del documento.
+_RE_MATERIA = re.compile(r"materia\s*:\s*(.+?)(?:\n\s*\n|\Z)", re.I | re.S)
 
 
 class IdentidadIncompleta(Exception):

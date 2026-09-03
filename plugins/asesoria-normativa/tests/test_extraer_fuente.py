@@ -29,14 +29,49 @@ def test_n2_elimina_todo_espacio():
     assert ef.normalizar_matching("noventa días hábiles") == "noventadíashábiles"
 
 def test_n2_absorbe_espacio_insertado_dentro_de_palabra():
-    # pypdf produce "R eposición" en el PDF real
-    assert ef.normalizar_matching("R eposición") == ef.normalizar_matching("Reposición")
+    # la extracción de PDF inserta espacios dentro de las palabras
+    assert ef.normalizar_matching("R eposición") == "reposición"
+    assert ef.normalizar_matching("Reposición") == "reposición"
 
-def test_n2_resuelve_la_asimetria_del_guion():
+def test_n2_elimina_todo_guion():
     """Fuente con corte de línea y cita sin él deben converger."""
     fuente = ef.normalizar_matching("jurídico-\ntributario")
     cita = ef.normalizar_matching("jurídico-tributario")
     assert fuente == cita == "jurídicotributario"
+
+def test_n1_une_el_corte_antes_de_unificar_los_guiones():
+    """Fija el orden de los pasos: si los guiones se unifican primero, el corte
+    tipográfico deja de reconocerse y la palabra queda partida."""
+    assert ef.normalizar_lectura("administra‐\ntivo") == "administrativo"
+    assert ef.normalizar_lectura("administra­\ntivo") == "administrativo"
+
+def test_n1_no_empalma_a_traves_de_una_raya():
+    """La raya es puntuación, no corte de palabra: unir pegaría dos palabras y
+    haría desaparecer la segunda para el detector de datos."""
+    assert "noventa" in ef.normalizar_lectura("fijado por ley—\nnoventa días")
+
+def test_n1_no_empalma_a_traves_de_un_quiebre_de_parrafo():
+    assert "cuarenta" in ef.normalizar_lectura("certificada-\n\ncuarenta y cinco")
+
+def test_n1_unifica_formas_unicode_equivalentes():
+    """El mismo carácter acentuado llega precompuesto o descompuesto según el
+    PDF; sin unificarlo ninguna cita con tilde de ese documento haría match."""
+    import unicodedata
+    descompuesta = unicodedata.normalize("NFD", "días hábiles administrativos")
+    assert ef.normalizar_matching(descompuesta) == ef.normalizar_matching(
+        "días hábiles administrativos")
+
+def test_n2_elimina_las_comillas():
+    """Mismo criterio que con los guiones: no se adivina cuál es de maquetado."""
+    assert (ef.normalizar_matching("la «Reposición» suspende")
+            == ef.normalizar_matching('la "Reposición" suspende'))
+    assert (ef.normalizar_matching("el 'plazo fatal'")
+            == ef.normalizar_matching('el "plazo fatal"'))
+
+def test_n1_unifica_el_ordinal_masculino_con_el_signo_de_grado():
+    """Circular Nº 35 y Circular N° 35 son el mismo documento."""
+    assert (ef.normalizar_matching("la Circular Nº 35 de 2026")
+            == ef.normalizar_matching("la Circular N° 35 de 2026"))
 
 def test_n2_es_idempotente_sobre_su_propia_salida():
     una_vez = ef.normalizar_matching("plazo de 90 días")
@@ -65,6 +100,19 @@ def test_detecta_identidad_aunque_el_bloque_este_al_final():
     assert identidad["fecha_documento"] == "31 de agosto de 2026"
     assert ef.derivar_anio(identidad["fecha_documento"]) == 2026
     assert "impugnación administrativa" in identidad["materia"]
+
+def test_materia_exige_los_dos_puntos():
+    """Sin los dos puntos engancha cualquier mención de la palabra en el cuerpo,
+    y esa cadena termina siendo la bajada del documento entregado."""
+    pagina = ("Las instrucciones impartidas previamente sobre la materia y su\n"
+              "aplicación se detallan a continuación.\n"
+              "CIRCULAR N°40.-\n"
+              "MATERIA: Instruye sobre el nuevo procedimiento.\n")
+    identidad = ef.detectar_identidad(pagina)
+    assert identidad["materia"].startswith("Instruye sobre el nuevo procedimiento")
+
+def test_materia_ausente_queda_en_none():
+    assert ef.detectar_identidad("CIRCULAR N°40.-")["materia"] is None
 
 def test_detecta_resolucion_exenta():
     identidad = ef.detectar_identidad("RESOLUCIÓN EXENTA SII N° 112.-\nFECHA: 4 DE MARZO DE 2025")
