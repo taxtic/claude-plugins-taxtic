@@ -114,7 +114,7 @@ _FORMATOS_ESPERADOS = {
 
 
 def detectar_identidad(texto_pagina_1):
-    """Detecta tipo, número, fecha, año y materia escaneando la página completa.
+    """Detecta tipo, número, fecha y materia escaneando la página completa.
 
     El bloque identificatorio del SII vive en un recuadro lateral y la extracción
     lo emite al final del texto de la página, después del cuerpo: por eso se
