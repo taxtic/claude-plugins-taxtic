@@ -1,6 +1,6 @@
 ---
 name: resumen-circular-sii
-description: Genera un resumen ejecutivo en Word y PDF con marca TAXTIC de una circular, resolución exenta u oficio del SII, a partir de un PDF local o una URL de sii.cl. Cada afirmación factual queda respaldada por una cita textual verificada contra el documento; el criterio profesional va aparte y sin datos verificables. Palabras gatillo: "resume esta circular", "qué dice esta resolución", "resumen de este oficio", "impacto de esta normativa".
+description: Genera un resumen ejecutivo en Word y PDF con marca TAXTIC de una circular, resolución exenta u oficio del SII, a partir de un PDF local o una URL de sii.cl. Cada afirmación factual queda respaldada por una cita textual verificada contra el documento; el criterio profesional va aparte y sin datos verificables. Palabras gatillo — "resume esta circular", "qué dice esta resolución", "resumen de este oficio", "impacto de esta normativa".
 ---
 
 **Idioma de respuesta:** siempre en español chileno. Terminología contable y tributaria local. Todo el output en español.

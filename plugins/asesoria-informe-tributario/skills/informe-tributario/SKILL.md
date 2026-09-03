@@ -1,6 +1,6 @@
 ---
 name: informe-tributario
-description: Genera un informe tributario chileno (F29, F22, balance, ficha, malla) en Word + Excel de marca TAXTIC. Orquesta parsers Python deterministas; ninguna cifra la genera la IA. Palabras gatillo: "informe tributario", "arma el informe del cliente", "análisis tributario", "informe F22/F29".
+description: Genera un informe tributario chileno (F29, F22, balance, ficha, malla) en Word + Excel de marca TAXTIC. Orquesta parsers Python deterministas; ninguna cifra la genera la IA. Palabras gatillo — "informe tributario", "arma el informe del cliente", "análisis tributario", "informe F22/F29".
 ---
 
 **Idioma de respuesta:** siempre español chileno. Terminología contable/tributaria local. Todo el output en español.
