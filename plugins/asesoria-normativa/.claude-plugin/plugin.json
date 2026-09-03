@@ -1,6 +1,6 @@
 {
   "name": "asesoria-normativa",
-  "version": "0.1.0",
-  "description": "Resúmenes de circulares SII, checklist pre-envío F29 y agente consultor tributario contextualizado.",
+  "version": "0.2.0",
+  "description": "Resúmenes de circulares, resoluciones y oficios del SII en Word y PDF con respaldo de citas verificable; checklist pre-envío F29 y agente consultor tributario.",
   "author": { "name": "TAXTIC", "url": "https://github.com/taxtic" }
 }
