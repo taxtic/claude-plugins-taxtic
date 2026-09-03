@@ -30,11 +30,14 @@ Dos principios de diseño:
    escribir esas cantidades en cifras —"30%" y no "treinta por ciento"—, que es
    además la forma inequívoca en un documento que se firma.
 
-**Los centinelas no se respaldan entre sí por sí solos.** Dos cantidades
-irresolubles distintas producen el mismo token, así que bajo una comparación de
-subconjuntos una respaldaría a la otra. Quien consume este módulo debe rechazar
-por separado toda afirmación cuyos literales incluyan un token que empiece con
-`MARCA_IRRESOLUBLE`, antes de comparar con los de la cita.
+**Cada centinela carga el contenido que no se pudo resolver**, con la forma
+`?dato:dos` o `?fecha:31-brumario-2026`. Un token opaco y único haría
+inexpresable todo hecho en forma no modelada: el texto y su cita emitirían el
+mismo símbolo y no habría con qué distinguirlos, así que "al menos dos
+funcionarios" se rechazaría aun estando copiado literalmente de la fuente.
+Cargando el contenido, `?dato:dos` queda respaldado por `?dato:dos` pero no por
+`?dato:tres`, que es la distinción que hace falta: la comparación de conjuntos
+sigue fallando cerrada sin volver inexpresable lo que el documento sí dice.
 """
 import datetime
 import re
@@ -218,8 +221,13 @@ def _token_de_fecha(anio, mes, dia):
     try:
         fecha = datetime.date(int(anio), int(mes), int(dia))
     except ValueError:
-        return FECHA_IRRESOLUBLE
-    return f"fecha:{fecha.year:04d}-{fecha.month:02d}-{fecha.day:02d}"
+        return {f"{FECHA_IRRESOLUBLE}:{anio}-{mes}-{dia}"}
+    # Se emite tambien el anio suelto: una afirmacion que solo dice "de 2018"
+    # queda respaldada por una cita que trae la fecha completa. La direccion
+    # peligrosa —partes dispersas respaldando una fecha— la sigue cerrando el
+    # token atomico, que ninguna parte suelta produce.
+    return {f"fecha:{fecha.year:04d}-{fecha.month:02d}-{fecha.day:02d}",
+            f"{fecha.year:04d}"}
 
 
 def _consumir_fechas(texto):
@@ -234,24 +242,27 @@ def _consumir_fechas(texto):
     tokens, tramos = set(), []
     for encontrado in _RE_FECHA_ISO.finditer(texto):
         anio, mes, dia = encontrado.groups()
-        tokens.add(_token_de_fecha(anio, mes, dia)); tramos.append(encontrado.span())
+        tokens |= _token_de_fecha(anio, mes, dia); tramos.append(encontrado.span())
     texto = _enmascarar(texto, tramos); tramos = []
     for encontrado in _RE_FECHA_NUMERICA.finditer(texto):
         dia, mes, anio = encontrado.groups()
-        tokens.add(_token_de_fecha(anio, mes, dia)); tramos.append(encontrado.span())
+        tokens |= _token_de_fecha(anio, mes, dia); tramos.append(encontrado.span())
     texto = _enmascarar(texto, tramos); tramos = []
     for encontrado in _RE_FECHA_TEXTO.finditer(texto):
         dia, mes, anio = encontrado.groups()
         numero_de_mes = _MESES.get(_sin_tildes(mes))
-        tokens.add(_token_de_fecha(anio, numero_de_mes, dia)
-                   if numero_de_mes else FECHA_IRRESOLUBLE)
+        if numero_de_mes:
+            tokens |= _token_de_fecha(anio, numero_de_mes, dia)
+        else:
+            tokens.add(f"{FECHA_IRRESOLUBLE}:{dia}-{_sin_tildes(mes)}-{anio}")
         tramos.append(encontrado.span())
     texto = _enmascarar(texto, tramos); tramos = []
     # "agosto de 2026" es una fecha a la que le falta el día. Dejarla pasar la
     # degradaría a su año suelto, y cualquier mención de ese año la respaldaría.
     for encontrado in _RE_FECHA_SIN_DIA.finditer(texto):
         if _sin_tildes(encontrado.group(1)) in _MESES:
-            tokens.add(FECHA_IRRESOLUBLE)
+            tokens.add(f"{FECHA_IRRESOLUBLE}:{_sin_tildes(encontrado.group(1))}"
+                       f"-{encontrado.group(2)}")
             tramos.append(encontrado.span())
     return tokens, _enmascarar(texto, tramos)
 
@@ -338,7 +349,7 @@ def _consumir_cantidades_temporales(texto):
         valores = (None if truncada or ordinal
                    else _segmentar_cantidades(corrida))
         if valores is None:
-            encontrados.add(MARCA_IRRESOLUBLE + sufijo)
+            encontrados.add(MARCA_IRRESOLUBLE + sufijo + ":" + "".join(corrida))
         else:
             encontrados.update(f"{valor}{sufijo}" for valor in valores)
         tramos.append((inicio_corrida, fin_unidad))
@@ -423,21 +434,29 @@ _ETAPAS = (_consumir_fechas, _consumir_referencias, _consumir_porcentajes,
 _AMBIGUAS_SUELTAS = {"un", "una", "uno", "y"}
 
 
-def _hay_dato_sin_reclamar(restante):
-    """Sobras con forma de dato que ninguna etapa consumió.
+def _datos_sin_reclamar(restante):
+    """Sobras con forma de dato que ninguna etapa consumió, una por token.
 
     No basta con buscar cifras: una cantidad escrita íntegramente en palabras
     con una unidad que el módulo no modela —"treinta por ciento", "mil unidades
     tributarias", "tres millones de pesos"— no deja un solo dígito, y sin esto
     salía conjunto vacío y **cualquier** cita la respaldaba.
+
+    **El centinela carga el contenido que no se pudo resolver.** Un token opaco
+    y único haría inexpresable todo hecho en forma no modelada: el texto y su
+    cita emitirían el mismo símbolo y no habría con qué distinguirlos, así que
+    "al menos dos funcionarios" se rechazaría aun estando copiado de la fuente.
+    Cargando el contenido, `?dato:dos` lo respalda `?dato:dos` pero no
+    `?dato:tres`, que es exactamente la distinción que hace falta.
     """
-    if _RE_CIFRA_RESIDUAL.search(restante):
-        return True
+    encontrados = set()
     for palabra in _RE_TOKEN.findall(restante):
         sin_tilde = _sin_tildes(palabra)
-        if sin_tilde in VOCABULARIO and sin_tilde not in _AMBIGUAS_SUELTAS:
-            return True
-    return False
+        if palabra[0].isdigit():
+            encontrados.add(DATO_IRRESOLUBLE + ":" + palabra.replace(".", ""))
+        elif sin_tilde in VOCABULARIO and sin_tilde not in _AMBIGUAS_SUELTAS:
+            encontrados.add(DATO_IRRESOLUBLE + ":" + sin_tilde)
+    return encontrados
 
 
 def extraer(texto):
@@ -452,13 +471,15 @@ def extraer(texto):
     restante = _RE_ANIO.sub(" ", restante)
     # Un mes suelto es una fecha a la que le falta el resto: "primero de enero"
     # o "el mes de agosto" son datos, y sin marcarlos pasaban en silencio.
-    if any(_sin_tildes(p) in _MESES for p in _RE_TOKEN.findall(restante)):
-        encontrados.add(FECHA_IRRESOLUBLE)
+    meses_sueltos = [p for p in _RE_TOKEN.findall(restante)
+                     if _sin_tildes(p) in _MESES]
+    for mes in meses_sueltos:
+        encontrados.add(FECHA_IRRESOLUBLE + ":" + _sin_tildes(mes))
+    if meses_sueltos:
         restante = " ".join(p for p in _RE_TOKEN.findall(restante)
                             if _sin_tildes(p) not in _MESES)
     # Lo que ninguna etapa reclamó es un dato en una forma que este módulo no
     # modela. Emitirlo como centinela hace que la afirmación falle cerrada, en
     # vez de que la forma desconocida sea una fuga silenciosa.
-    if _hay_dato_sin_reclamar(restante):
-        encontrados.add(DATO_IRRESOLUBLE)
+    encontrados |= _datos_sin_reclamar(restante)
     return encontrados

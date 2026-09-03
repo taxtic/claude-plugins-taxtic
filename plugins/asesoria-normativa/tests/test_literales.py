@@ -10,6 +10,17 @@ def _cargar(nombre):
 lit = _cargar("literales")
 
 
+def _hay(encontrados, prefijo):
+    """Los centinelas cargan el contenido irresoluble, así que se comparan por
+    prefijo: `?dato:dos` es un centinela de dato, distinto de `?dato:tres`."""
+    return any(t == prefijo or t.startswith(prefijo + ":") for t in encontrados)
+
+
+def _solo_centinelas(encontrados, prefijo):
+    return bool(encontrados) and all(
+        t == prefijo or t.startswith(prefijo + ":") for t in encontrados)
+
+
 def test_cardinal_irregulares():
     assert lit.parsear_cardinal(["cinco"]) == 5
     assert lit.parsear_cardinal(["quince"]) == 15
@@ -66,7 +77,7 @@ def test_referencia_normativa_no_usa_palabras():
     # Los números de artículo se escriben siempre en dígitos en la normativa
     # chilena, así que la forma en palabras no resuelve a una referencia. Pero
     # tampoco pasa en silencio: es un dato en una forma no modelada.
-    assert lit.extraer("el artículo ciento veinticuatro") == {lit.DATO_IRRESOLUBLE}
+    assert _solo_centinelas(lit.extraer("el artículo ciento veinticuatro"), lit.DATO_IRRESOLUBLE)
 
 def test_extrae_porcentaje_y_monto():
     assert "27pct" in lit.extraer("tasa de 27%")
@@ -80,23 +91,26 @@ def test_canonicalizacion_de_porcentajes():
     assert lit.extraer("tasa de 10,50%") == {"10.5pct"}
 
 def test_extrae_la_fecha_como_una_unidad():
-    assert lit.extraer("con fecha 31 de agosto de 2026") == {"fecha:2026-08-31"}
+    assert "fecha:2026-08-31" in lit.extraer("con fecha 31 de agosto de 2026")
 
 def test_extrae_fecha_en_formato_numerico():
-    assert lit.extraer("presentada el 31/08/2026") == {"fecha:2026-08-31"}
+    assert "fecha:2026-08-31" in lit.extraer("presentada el 31/08/2026")
 
 def test_la_fecha_no_se_descompone_en_partes_sueltas():
     """El día, el mes y el año por separado respaldarían una fecha que no existe."""
     encontrados = lit.extraer("el 31 de agosto de 2026")
+    assert "fecha:2026-08-31" in encontrados
+    # el día y el mes no salen sueltos; el año sí, para que una afirmación que
+    # solo lo menciona quede respaldada por una cita con la fecha completa
     assert "31" not in encontrados
     assert "agosto" not in encontrados
-    assert "2026" not in encontrados
 
 def test_una_fecha_distinta_produce_un_token_distinto():
     # Compara los tokens concretos: afirmar solo que los conjuntos difieren
     # pasaría igual si las fechas se degradaran a sus años sueltos.
-    assert lit.extraer("2 de enero de 2025") == {"fecha:2025-01-02"}
-    assert lit.extraer("31 de agosto de 2026") == {"fecha:2026-08-31"}
+    assert "fecha:2025-01-02" in lit.extraer("2 de enero de 2025")
+    assert "fecha:2026-08-31" in lit.extraer("31 de agosto de 2026")
+    assert lit.extraer("2 de enero de 2025") != lit.extraer("31 de agosto de 2026")
 
 def test_partes_sueltas_no_respaldan_una_fecha_completa():
     """El caso que motivó el token atómico: 31, agosto y 2026 dispersos."""
@@ -113,7 +127,8 @@ def test_ordinales_en_palabras_no_producen_cardinal():
     cifra no hay dato que verificar, y con cifra cae al centinela residual."""
     assert lit.extraer("desde el primer día hábil siguiente") == set()
     # "el 5° día" es una posición en el cómputo, no una cantidad de días
-    assert lit.extraer("desde el 5° día hábil siguiente") == {lit.MARCA_IRRESOLUBLE + "d"}
+    assert _solo_centinelas(lit.extraer("desde el 5° día hábil siguiente"),
+                            lit.MARCA_IRRESOLUBLE + "d")
 
 def test_cantidad_irresoluble_no_produce_literal_silencioso():
     # "muchos días" no es una cantidad: no debe inventar un token
@@ -135,7 +150,7 @@ def test_extremo_superior_del_rango():
 def test_cantidad_irresoluble_falla_cerrado():
     """Palabras de cantidad que no forman un número no pueden pasar en silencio."""
     encontrados = lit.extraer("transcurridos cinco y noventa días")
-    assert encontrados == {"?d"}
+    assert _solo_centinelas(encontrados, "?d")
     # ningún token de cantidad real puede respaldar al centinela
     assert not encontrados <= lit.extraer("dentro de noventa días hábiles")
 
@@ -145,25 +160,25 @@ def test_cantidad_irresoluble_falla_cerrado():
 # --- año suelto y cualquier mención de ese año la respaldaba.
 
 def test_fecha_con_puntos_como_separador():
-    assert lit.extraer("Rige desde el 31.08.2026.") == {"fecha:2026-08-31"}
+    assert "fecha:2026-08-31" in lit.extraer("Rige desde el 31.08.2026.")
 
 def test_fecha_con_marcador_ordinal():
-    assert lit.extraer("Rige desde el 1° de enero de 2026.") == {"fecha:2026-01-01"}
+    assert "fecha:2026-01-01" in lit.extraer("Rige desde el 1° de enero de 2026.")
 
 def test_fecha_con_del_en_vez_de_de():
-    assert lit.extraer("Rige desde el 1 de enero del 2026.") == {"fecha:2026-01-01"}
+    assert "fecha:2026-01-01" in lit.extraer("Rige desde el 1 de enero del 2026.")
 
 def test_fecha_en_formato_iso():
-    assert lit.extraer("con fecha 2026-08-31") == {"fecha:2026-08-31"}
+    assert "fecha:2026-08-31" in lit.extraer("con fecha 2026-08-31")
 
 def test_mes_mal_escrito_no_se_degrada_a_anio_suelto():
     encontrados = lit.extraer("Con fecha 31 de agost de 2026.")
-    assert encontrados == {lit.FECHA_IRRESOLUBLE}
+    assert _solo_centinelas(encontrados, lit.FECHA_IRRESOLUBLE)
     assert "2026" not in encontrados
 
 def test_fecha_inexistente_en_calendario_emite_centinela():
-    assert lit.extraer("el 31 de febrero de 2026") == {lit.FECHA_IRRESOLUBLE}
-    assert lit.extraer("el 13/45/2026") == {lit.FECHA_IRRESOLUBLE}
+    assert _solo_centinelas(lit.extraer("el 31 de febrero de 2026"), lit.FECHA_IRRESOLUBLE)
+    assert _solo_centinelas(lit.extraer("el 13/45/2026"), lit.FECHA_IRRESOLUBLE)
 
 def test_todos_los_centinelas_llevan_la_marca_comun():
     """Quien consume el módulo rechaza por la marca, así que todo centinela que
@@ -176,8 +191,8 @@ def test_todos_los_centinelas_llevan_la_marca_comun():
         assert all(t.startswith(lit.MARCA_IRRESOLUBLE) for t in encontrados)
 
 def test_dos_fechas_en_un_texto_se_atomizan_las_dos():
-    assert lit.extraer("entre el 1 de enero de 2025 y el 31 de agosto de 2026") == {
-        "fecha:2025-01-01", "fecha:2026-08-31"}
+    encontrados = lit.extraer("entre el 1 de enero de 2025 y el 31 de agosto de 2026")
+    assert {"fecha:2025-01-01", "fecha:2026-08-31"} <= encontrados
 
 
 # --- Vocabulario sin tildes: los PDF y el texto tecleado llegan de las dos
@@ -214,7 +229,8 @@ def test_forma_mixta_de_la_normativa():
 
 def test_forma_mixta_contradictoria_emite_centinela():
     """Si la cifra y la palabra no coinciden, el texto se contradice."""
-    assert lit.extraer("noventa (60) dias habiles") == {lit.MARCA_IRRESOLUBLE + "d"}
+    assert _solo_centinelas(lit.extraer("noventa (60) dias habiles"),
+                            lit.MARCA_IRRESOLUBLE + "d")
 
 
 # --- Referencias normativas: la enumeración es la forma canónica de citar el
@@ -264,9 +280,8 @@ def test_monto_en_pesos_con_signo():
 
 def test_formas_no_gramaticales_emiten_centinela():
     marca = lit.MARCA_IRRESOLUBLE + "d"
-    assert lit.extraer("cien uno dias") == {marca}
-    assert lit.extraer("ciento dias") == {marca}
-    assert lit.extraer("un mil dias") == {marca}
+    for texto in ("cien uno dias", "ciento dias", "un mil dias"):
+        assert _solo_centinelas(lit.extraer(texto), marca), texto
 
 
 # --- Cifras que ninguna etapa reclama: el centinela residual es lo que impide
@@ -277,10 +292,10 @@ def test_forma_no_modelada_cae_en_centinela_residual():
                   "rige desde el 1 de enero", "vence el 31/08/26",
                   "los 30 primeros días", "el artículo 97 N° 4"):
         encontrados = lit.extraer(texto)
-        assert lit.DATO_IRRESOLUBLE in encontrados, texto
+        assert _hay(encontrados, lit.DATO_IRRESOLUBLE), texto
 
 def test_una_fecha_sin_dia_no_se_degrada_a_anio_suelto():
-    assert lit.extraer("a contar de agosto de 2026") == {lit.FECHA_IRRESOLUBLE}
+    assert _solo_centinelas(lit.extraer("a contar de agosto de 2026"), lit.FECHA_IRRESOLUBLE)
 
 def test_el_anio_suelto_sigue_saliendo_cuando_no_hay_fecha():
     assert lit.extraer("correspondiente al año tributario 2026") == {"2026"}
@@ -330,22 +345,22 @@ def test_decreto_ley_con_espacios_y_puntos():
 def test_tipo_de_norma_desconocido_no_desaparece():
     """Si no se reconoce el tipo, el número cae al residuo como centinela en
     vez de borrarse junto con el tramo."""
-    assert lit.DATO_IRRESOLUBLE in lit.extraer("el acuerdo 1234 del consejo")
+    assert _hay(lit.extraer("el acuerdo 1234 del consejo"), lit.DATO_IRRESOLUBLE)
 
 
 # --- Cantidades
 
 def test_una_cifra_al_lado_no_cura_una_cantidad_irresoluble():
     marca = lit.MARCA_IRRESOLUBLE + "d"
-    assert lit.extraer("diez mil (5.000) días") == {marca}
-    assert lit.extraer("cien uno (90) días") == {marca}
+    assert _solo_centinelas(lit.extraer("diez mil (5.000) días"), marca)
+    assert _solo_centinelas(lit.extraer("cien uno (90) días"), marca)
 
 def test_una_corrida_demasiado_larga_no_se_trunca_a_un_valor():
     """Cortar la corrida partiría una cantidad compuesta al medio y produciría
     un valor que nadie escribió."""
     largo = "de ciento veinte o 10 o 40 o 30 o ciento cuarenta y cinco días"
     encontrados = lit.extraer(largo)
-    assert lit.MARCA_IRRESOLUBLE + "d" in encontrados
+    assert _hay(encontrados, lit.MARCA_IRRESOLUBLE + "d")
     # ningún valor concreto: truncar la corrida inventaría uno
     assert not any(t[0].isdigit() for t in encontrados)
 
@@ -358,11 +373,11 @@ def test_cantidad_en_palabras_con_unidad_no_temporal_falla_cerrada():
                   "una multa de mil unidades tributarias mensuales",
                   "tres millones de pesos",
                   "quinientas unidades de fomento"):
-        assert lit.DATO_IRRESOLUBLE in lit.extraer(texto), texto
+        assert _hay(lit.extraer(texto), lit.DATO_IRRESOLUBLE), texto
 
 def test_un_mes_suelto_es_una_fecha_incompleta():
-    assert lit.FECHA_IRRESOLUBLE in lit.extraer("el plazo vence el primero de enero")
-    assert lit.FECHA_IRRESOLUBLE in lit.extraer("durante el mes de agosto")
+    assert _hay(lit.extraer("el plazo vence el primero de enero"), lit.FECHA_IRRESOLUBLE)
+    assert _hay(lit.extraer("durante el mes de agosto"), lit.FECHA_IRRESOLUBLE)
 
 def test_el_articulo_indefinido_y_la_conjuncion_no_disparan_centinela():
     """Están en el vocabulario de números pero sueltos no son cantidades."""
@@ -371,3 +386,42 @@ def test_el_articulo_indefinido_y_la_conjuncion_no_disparan_centinela():
                   "la reposición y el recurso jerárquico proceden",
                   "el Servicio debe pronunciarse fundadamente"):
         assert lit.extraer(texto) == set(), texto
+
+
+# --- Los centinelas cargan contenido: un hecho en forma no modelada tiene que
+# --- ser expresable cuando la fuente dice exactamente lo mismo, y rechazado
+# --- cuando dice otra cosa. Los tres casos vienen de una corrida real.
+
+def _respalda(cita, texto):
+    return lit.extraer(texto) <= lit.extraer(cita)
+
+
+def test_un_hecho_en_forma_no_modelada_es_expresable_si_la_fuente_lo_dice():
+    assert _respalda(
+        "la audiencia se celebrará con la asistencia de al menos dos funcionarios",
+        "la audiencia exige al menos dos funcionarios")
+    assert _respalda(
+        "podrán acompañarse antecedentes hasta el día sesenta (60) desde la presentación",
+        "los antecedentes se acompañan hasta el día sesenta")
+    assert _respalda(
+        "deja sin efecto las Circulares N°34 de 27 de junio de 2018, N°26 de 18 de junio de 2026",
+        "las Circulares N°34 de 2018 y N°26 de 2026")
+
+def test_el_mismo_hecho_con_otra_cifra_sigue_rechazado():
+    assert not _respalda(
+        "la audiencia se celebrará con la asistencia de al menos dos funcionarios",
+        "la audiencia exige al menos tres funcionarios")
+    assert not _respalda(
+        "podrán acompañarse antecedentes hasta el día sesenta desde la presentación",
+        "los antecedentes se acompañan hasta el día cuarenta")
+    assert not _respalda(
+        "un recargo de diez por ciento sobre el impuesto adeudado",
+        "un recargo de treinta por ciento sobre el impuesto")
+
+def test_el_anio_suelto_queda_respaldado_por_la_fecha_completa():
+    """Una afirmación que solo dice "de 2018" la respalda una cita con la fecha
+    entera; la dirección peligrosa la sigue cerrando el token atómico."""
+    assert _respalda("dictada el 27 de junio de 2018", "la circular de 2018")
+    assert not _respalda(
+        "en el numeral 27 el mes de junio del año 2018 se computa aparte",
+        "dictada el 27 de junio de 2018")
