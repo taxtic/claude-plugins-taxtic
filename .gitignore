@@ -16,3 +16,20 @@ venv/
 # Local test outputs
 *.csv.tmp
 *_test_output.*
+
+# Artefactos que los plugins generan al procesar documentos.
+# Llevan el contenido del documento leido y datos del contribuyente, y aparecen
+# en el directorio de trabajo: nunca se versionan en un repo publico.
+fuente.json
+resumen.json
+respaldo-citas.md
+resumen*.docx
+resumen*.pdf
+datos.json
+secciones.json
+informe*.docx
+anexo*.xlsx
+
+# Los fixtures de test si se versionan, aunque su nombre coincida: son data
+# inventada, no la salida de procesar un documento real.
+!**/tests/fixtures/**

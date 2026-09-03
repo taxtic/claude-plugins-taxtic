@@ -28,7 +28,7 @@
     {
       "name": "asesoria-normativa",
       "source": "./plugins/asesoria-normativa",
-      "description": "Resúmenes de circulares SII, checklist F29 y consultor tributario."
+      "description": "Resúmenes de circulares, resoluciones y oficios del SII en Word y PDF con respaldo de citas; checklist F29 y consultor tributario."
     },
     {
       "name": "contabilidad-rendiciones",
