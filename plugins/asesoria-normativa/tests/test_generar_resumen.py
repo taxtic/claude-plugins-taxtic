@@ -219,3 +219,57 @@ def test_una_seccion_no_admitida_no_se_emite_despues_del_cierre(tmp_path):
     with pytest.raises(ValueError) as e:
         gr.construir_docx(FUENTE, resumen, str(tmp_path / "r.docx"))
     assert "caso_consultado" in str(e.value)
+
+
+# --- Integración gate → builder. El producto es una cadena, y ningún test
+# --- verificaba que lo que pasa el gate sea construible.
+
+def _fuente_y_resumen_reales():
+    """Una fuente coherente consigo misma y un resumen que la cita de verdad."""
+    import importlib.util, os
+    ruta = os.path.join(os.path.dirname(__file__), "..", "scripts", "extraer_fuente.py")
+    spec = importlib.util.spec_from_file_location("extraer_fuente", ruta)
+    ef = importlib.util.module_from_spec(spec); spec.loader.exec_module(ef)
+    pagina = ("El Servicio deberá pronunciarse dentro del plazo de noventa (90) días "
+              "hábiles administrativos contados desde la presentación del recurso.")
+    fuente = ef.construir_fuente(
+        [pagina], {"clase": "pdf", "ruta": "x.pdf"},
+        {"tipo": "circular", "numero": "35", "materia": "Instruye sobre plazos",
+         "fecha_documento": "31 de agosto de 2026"})
+    resumen = {
+        "meta": {"elaborado_por": "Asesor Tributario"},
+        "secciones": [
+            {"id": "tema", "bloques": [
+                {"tipo": "parrafo", "afirmacion": "citada",
+                 "texto": "El SII debe pronunciarse dentro de 90 días hábiles administrativos.",
+                 "cita": "deberá pronunciarse dentro del plazo de noventa (90) días hábiles administrativos",
+                 "pagina": 1}]},
+            {"id": "gestiones", "bloques": [
+                {"tipo": "lista", "afirmacion": "derivada",
+                 "items": [{"texto": "Revisar los expedientes en curso."}]}]},
+            {"id": "a_verificar", "bloques": [
+                {"tipo": "lista", "afirmacion": "derivada",
+                 "items": [{"texto": "Confirmar la publicación en el Diario Oficial."}]}]},
+        ],
+    }
+    return ef, fuente, resumen
+
+
+def test_lo_que_pasa_el_gate_se_puede_construir(tmp_path):
+    import importlib.util, os
+    ruta = os.path.join(os.path.dirname(__file__), "..", "scripts", "verificar_citas.py")
+    spec = importlib.util.spec_from_file_location("verificar_citas", ruta)
+    vc = importlib.util.module_from_spec(spec); spec.loader.exec_module(vc)
+    _, fuente, resumen = _fuente_y_resumen_reales()
+    filas = vc.verificar(resumen, fuente)          # no levanta
+    salida = str(tmp_path / "r.docx")
+    gr.construir_docx(fuente, resumen, salida)     # tampoco
+    textos = _textos(docx.Document(salida))
+    assert any("90 días hábiles" in t for t in textos)
+    assert filas
+
+def test_el_builder_no_pisa_un_documento_existente(tmp_path):
+    existente = tmp_path / "resumen.docx"
+    existente.write_bytes(b"version anterior del contador")
+    assert gr._ruta_sin_pisar(str(existente)) == str(tmp_path / "resumen-2.docx")
+    assert existente.read_bytes() == b"version anterior del contador"

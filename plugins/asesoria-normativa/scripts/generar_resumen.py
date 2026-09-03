@@ -307,19 +307,74 @@ def construir_docx(fuente, resumen, salida):
     return salida
 
 
+def _ruta_sin_pisar(ruta):
+    """Sufija -2, -3… en vez de sobrescribir.
+
+    El nombre de salida es determinista, así que una segunda corrida sobre la
+    misma circular pisaría la primera, incluidas las correcciones que el
+    contador ya hubiera hecho a mano sobre el documento.
+    """
+    if not _os.path.exists(ruta):
+        return ruta
+    raiz, extension = _os.path.splitext(ruta)
+    for intento in range(2, 100):
+        candidato = f"{raiz}-{intento}{extension}"
+        if not _os.path.exists(candidato):
+            return candidato
+    raise FuenteIncompleta(f"demasiadas versiones de '{ruta}'; limpia el directorio")
+
+
 def _main():
-    import argparse, json
+    import argparse, json, sys
     analizador = argparse.ArgumentParser(description="Arma el .docx del resumen normativo")
     analizador.add_argument("fuente")
     analizador.add_argument("resumen")
     analizador.add_argument("--docx", default="resumen.docx")
     argumentos = analizador.parse_args()
-    with open(argumentos.fuente, encoding="utf-8") as archivo:
-        fuente = json.load(archivo)
-    with open(argumentos.resumen, encoding="utf-8") as archivo:
-        resumen = json.load(archivo)
-    construir_docx(fuente, resumen, argumentos.docx)
-    print(f"Generado {argumentos.docx}")
+
+    # Quien usa esto es un contador sin experiencia de terminal: un traceback
+    # de json o de python-docx no le dice qué hacer.
+    try:
+        with open(argumentos.fuente, encoding="utf-8") as archivo:
+            fuente = json.load(archivo)
+        with open(argumentos.resumen, encoding="utf-8") as archivo:
+            resumen = json.load(archivo)
+    except FileNotFoundError as error:
+        print(f"NO SE ENCONTRÓ EL ARCHIVO: {error.filename}")
+        sys.exit(1)
+    except json.JSONDecodeError as error:
+        print(f"JSON MAL FORMADO en {argumentos.resumen}: {error}")
+        sys.exit(1)
+
+    # El gate se vuelve a correr acá y no se confía en que ya haya pasado. La
+    # secuencia de comandos la ejecuta un modelo, y una invariante que depende
+    # de que alguien recuerde el orden no es una invariante.
+    verificar_citas = _cargar_vecino("verificar_citas")
+    try:
+        verificar_citas.verificar(resumen, fuente)
+    except Exception as error:
+        print(f"RECHAZADO [{type(error).__name__}] {error}")
+        print("El documento no se generó: corrige el resumen y vuelve a intentar.")
+        sys.exit(1)
+
+    salida = _ruta_sin_pisar(argumentos.docx)
+    try:
+        construir_docx(fuente, resumen, salida)
+    except ModuleNotFoundError as error:
+        print(f"FALTA UNA DEPENDENCIA: {error.name}")
+        print("Instálalas con: pip install -r requirements.txt")
+        sys.exit(1)
+    except PermissionError:
+        print(f"NO SE PUDO ESCRIBIR '{salida}': ¿está abierto en Word?")
+        print("Ciérralo y vuelve a intentar.")
+        sys.exit(1)
+    except (FuenteIncompleta, ValueError) as error:
+        print(f"NO SE PUDO ARMAR EL DOCUMENTO: {error}")
+        sys.exit(1)
+
+    print(f"Generado {salida}")
+    if salida != argumentos.docx:
+        print(f"(ya existía {argumentos.docx}, no se sobrescribió)")
 
 
 if __name__ == "__main__":

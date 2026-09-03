@@ -122,10 +122,13 @@ def test_partes_sueltas_no_respaldan_una_fecha_completa():
 def test_anio_suelto_se_extrae_si_no_es_parte_de_una_fecha():
     assert "2026" in lit.extraer("correspondiente al año tributario 2026")
 
-def test_ordinales_en_palabras_no_producen_cardinal():
-    """No se leen como cantidad, pero tampoco se dan por inexistentes: sin
-    cifra no hay dato que verificar, y con cifra cae al centinela residual."""
-    assert lit.extraer("desde el primer día hábil siguiente") == set()
+def test_los_ordinales_en_palabras_son_un_dato():
+    """"hasta el décimo día hábil" es tan verificable como "hasta el día 10":
+    sin marcarlo, se podía escribir sexagésimo donde el documento dice décimo."""
+    assert _hay(lit.extraer("desde el primer día hábil siguiente"),
+                lit.DATO_IRRESOLUBLE)
+    assert lit.extraer("hasta el décimo día hábil") != lit.extraer(
+        "hasta el sexagésimo día hábil")
     # "el 5° día" es una posición en el cómputo, no una cantidad de días
     assert _solo_centinelas(lit.extraer("desde el 5° día hábil siguiente"),
                             lit.MARCA_IRRESOLUBLE + "d")
@@ -425,3 +428,22 @@ def test_el_anio_suelto_queda_respaldado_por_la_fecha_completa():
     assert not _respalda(
         "en el numeral 27 el mes de junio del año 2018 se computa aparte",
         "dictada el 27 de junio de 2018")
+
+
+
+def test_el_ordinal_en_palabras_no_es_una_puerta_trasera():
+    """El caso que atravesaba el gate completo: la cita dice décimo y el texto
+    dice sexagésimo, sin que ninguno produjera literal."""
+    fuente = lit.extraer("hasta el décimo día hábil contado desde la notificación")
+    assert not lit.extraer("hasta el sexagésimo día hábil") <= fuente
+    assert lit.extraer("hasta el décimo día hábil") <= fuente
+
+def test_una_cantidad_con_articulo_y_unidad_es_un_dato():
+    """"una unidad tributaria" es una cantidad tanto como "dos UTM"; tratarlas
+    distinto dejaba pasar la primera sin literal alguno."""
+    assert _hay(lit.extraer("una multa de una unidad tributaria mensual"),
+                lit.DATO_IRRESOLUBLE)
+    assert not lit.extraer("una multa de una unidad tributaria mensual") <= lit.extraer(
+        "una multa de cien unidades tributarias mensuales")
+    # y el artículo suelto sigue sin ensuciar
+    assert lit.extraer("el contribuyente presenta un recurso") == set()

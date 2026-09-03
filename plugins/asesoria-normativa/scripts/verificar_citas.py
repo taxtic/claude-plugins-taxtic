@@ -232,17 +232,30 @@ def escribir_respaldo(filas, fuente, salida, elaborado_por=None):
         "",
         "## Procedencia de los campos de identidad",
         "",
-        "| Campo | Origen |",
-        "|---|---|",
+        "| Campo | Valor | Origen |",
+        "|---|---|---|",
     ]
     for campo, origen in sorted(fuente.get("procedencia_campos", {}).items()):
         marca = " ⚠️ aportado por el usuario" if origen == "usuario" else ""
-        lineas.append(f"| `{campo}` | {origen}{marca} |")
+        # Con el valor a la vista: decir que el número lo aportó el usuario no
+        # sirve para revisar si no se ve cuál aportó.
+        valor = fuente.get(campo)
+        lineas.append(f"| `{campo}` | {_para_celda(str(valor))} | {origen}{marca} |")
     if elaborado_por:
         # Es el único texto que llega al documento sin pasar por el gate, así
         # que si no aparece acá nadie lo revisa.
         lineas.append(
-            f"| `elaborado_por` | usuario ⚠️ {_para_celda(elaborado_por)} |")
+            f"| `elaborado_por` | {_para_celda(elaborado_por)} | usuario ⚠️ |")
+    if fuente.get("materia"):
+        lineas += [
+            "",
+            "## Bajada de la portada",
+            "",
+            "Se copia de la línea `MATERIA:` del documento y **no pasa por el gate**: "
+            "llega al cliente con los artefactos que traiga la extracción. Léela.",
+            "",
+            "> " + _para_celda(fuente["materia"]),
+        ]
     lineas += ["", "## Afirmaciones y respaldo", "",
                "| Ubicación | Afirmación | Cita | Página |", "|---|---|---|---|"]
     for fila in filas:

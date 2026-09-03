@@ -199,13 +199,13 @@ El gate compara datos, no palabras, y solo reconoce estas formas:
 - **Montos:** `$1.500.000`, cifras con separador de miles, y cantidades en UTM, UTA o UF.
 - **Años sueltos**, cuando no forman parte de una fecha.
 
-**Todo lo demás con forma de dato falla cerrado.** No solo las cifras: también las palabras de cantidad y los nombres de mes. `48 horas`, `el N° 4 del artículo 97`, `el día 30`, `agosto de 2026` sin día, `el 5° día hábil`, `treinta por ciento`, `mil unidades tributarias`, `dos funcionarios` y `primero de enero` emiten un centinela en vez de un dato.
+**Todo lo demás con forma de dato falla cerrado.** No solo las cifras: también las palabras de cantidad y los nombres de mes. `48 horas`, `el N° 4 del artículo 97`, `el día 30`, `agosto de 2026` sin día, `el 5° día hábil`, `el décimo día hábil`, `treinta por ciento`, `una unidad tributaria mensual`, `dos funcionarios` y `primero de enero` emiten un centinela en vez de un dato.
 
 **El centinela lleva el contenido que no se pudo resolver, así que se compara.** Si tu cita dice exactamente lo mismo, la afirmación pasa: `dos funcionarios` respaldado por una cita que dice `dos funcionarios` está bien. Lo que el gate rechaza es afirmar `tres` cuando la cita dice `dos`. Tienes tres salidas cuando te rechaza:
 
 1. **Reescribe la cifra** en una de las formas de arriba — `30%` en vez de `treinta por ciento` es además la forma inequívoca en un documento que se firma.
 2. **Elige una cita que contenga la misma forma.** Si la fuente escribe `hasta el día sesenta (60)`, una cita que incluya esas palabras respalda tu `hasta el día sesenta`.
-3. **Saca la cifra de tu texto** y deja que la cita la lleve. Los ordinales en palabras —`el sexagésimo día`— no emiten literal, así que sirven para decir el hecho sin la cifra.
+3. **Saca la cifra de tu texto** y deja que la cita la lleve: describe el hecho sin el número y que el respaldo lo aporte. Los ordinales en palabras —`el décimo día`— **no son una salida**: cuentan como dato igual que las cifras, porque decir `sexagésimo` donde el documento dice `décimo` es exactamente el error que el gate existe para evitar.
 
 En una `derivada` la regla es más estricta y **no basta con evitar dígitos**: tampoco puede llevar palabras de cantidad ni nombres de mes. `Revisar los expedientes dentro de treinta días` y `Coordinar la revisión para agosto` son rechazadas aunque no tengan un solo número. Divide en dos: el hecho como afirmación `citada`, la recomendación como `derivada`.
 

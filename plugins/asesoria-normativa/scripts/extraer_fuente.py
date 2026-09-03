@@ -97,9 +97,12 @@ _RE_NUMERO = re.compile(r"^\d{1,6}$")
 # ("REF. LEGAL:"), que si no queda pegada a la bajada del documento. La etiqueta
 # se compara con sensibilidad a mayúsculas: bajo re.I la clase [A-ZÁÉÍÓÚ]
 # también acepta minúsculas y cortaría en cualquier frase con dos puntos.
+# El terminador va como lookahead: consumirlo se llevaba la etiqueta siguiente,
+# así que una segunda línea MATERIA: quedaba fuera del alcance de la búsqueda y
+# ganaba la mención del cuerpo.
 _RE_MATERIA = re.compile(
     r"materia\s*:\s*(.+?)"
-    r"(?:\n\s*\n|\n\s*(?-i:[A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚ\s.]{2,}:)|\Z)", re.I | re.S)
+    r"(?=\n\s*\n|\n\s*(?-i:[A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚ\s.]{2,}:)|\Z)", re.I | re.S)
 
 
 class IdentidadIncompleta(Exception):
@@ -201,9 +204,12 @@ def detectar_identidad(texto_pagina_1):
         # misma validación que para la fecha aportada por el usuario
         identidad["fecha_documento"] = parsear_fecha(fechas[-1].group(1))
 
-    materia = _RE_MATERIA.search(texto_pagina_1)
-    if materia:
-        identidad["materia"] = _RE_ESPACIOS.sub(" ", materia.group(1)).strip()
+    # La última, por la misma razón que el tipo y la fecha: el cuerpo puede
+    # decir "en la siguiente materia:" antes de llegar al recuadro, y esa
+    # cadena termina siendo la bajada de la portada que va al cliente.
+    materias = list(_RE_MATERIA.finditer(texto_pagina_1))
+    if materias:
+        identidad["materia"] = _RE_ESPACIOS.sub(" ", materias[-1].group(1)).strip()
 
     return identidad
 

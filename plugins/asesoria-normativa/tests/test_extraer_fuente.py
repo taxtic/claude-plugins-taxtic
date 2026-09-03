@@ -488,3 +488,16 @@ def test_n2_conserva_el_guion_entre_cifras():
     # el guion de maquetado entre letras se sigue eliminando
     assert (ef.normalizar_matching("jurídico-tributario")
             == ef.normalizar_matching("jurídicotributario"))
+
+
+def test_la_materia_del_recuadro_gana_sobre_la_del_cuerpo():
+    """El tercer hermano de los otros dos: el cuerpo puede decir "sobre la
+    siguiente materia:" antes del recuadro, y esa cadena termina siendo la
+    bajada de la portada que va al cliente."""
+    pagina = ("El Servicio se pronuncia sobre la siguiente materia: la procedencia\n"
+              "del recurso respecto de las liquidaciones emitidas.\n"
+              "CIRCULAR N°35.-\n"
+              "MATERIA: Actualiza instrucciones sobre mecanismos de impugnación.\n")
+    materia = ef.detectar_identidad(pagina)["materia"]
+    assert materia.startswith("Actualiza instrucciones")
+    assert "procedencia" not in materia

@@ -433,6 +433,27 @@ _ETAPAS = (_consumir_fechas, _consumir_referencias, _consumir_porcentajes,
 # fallar cerrada cualquier frase con "un recurso" o con una enumeración.
 _AMBIGUAS_SUELTAS = {"un", "una", "uno", "y"}
 
+# ...salvo cuando las sigue un sustantivo de unidad. "una unidad tributaria
+# mensual" es una cantidad tanto como "dos UTM", y tratarlas distinto dejaba
+# pasar la primera sin literal alguno.
+_SUSTANTIVOS_DE_UNIDAD = {"unidad", "unidades", "millon", "millones", "mil",
+                          "peso", "pesos", "utm", "uta", "uf", "vez", "veces"}
+
+# Los ordinales del cómputo de plazos. "hasta el décimo día hábil" es un dato
+# tan verificable como "hasta el día 10", y no estaban en ningún vocabulario:
+# no producían literal ni centinela, así que una cita cualquiera los respaldaba
+# y se podía escribir "sexagésimo" donde el documento dice "décimo".
+_ORDINALES_EN_PALABRAS = _plegar({
+    "primero": 1, "primer": 1, "primera": 1, "segundo": 2, "segunda": 2,
+    "tercero": 3, "tercer": 3, "tercera": 3, "cuarto": 4, "cuarta": 4,
+    "quinto": 5, "quinta": 5, "sexto": 6, "sexta": 6, "séptimo": 7,
+    "séptima": 7, "octavo": 8, "octava": 8, "noveno": 9, "novena": 9,
+    "décimo": 10, "décima": 10, "undécimo": 11, "duodécimo": 12,
+    "vigésimo": 20, "vigésima": 20, "trigésimo": 30, "trigésima": 30,
+    "cuadragésimo": 40, "quincuagésimo": 50, "sexagésimo": 60,
+    "septuagésimo": 70, "octogésimo": 80, "nonagésimo": 90, "centésimo": 100,
+})
+
 
 def _datos_sin_reclamar(restante):
     """Sobras con forma de dato que ninguna etapa consumió, una por token.
@@ -450,12 +471,17 @@ def _datos_sin_reclamar(restante):
     `?dato:tres`, que es exactamente la distinción que hace falta.
     """
     encontrados = set()
-    for palabra in _RE_TOKEN.findall(restante):
-        sin_tilde = _sin_tildes(palabra)
+    palabras = [_sin_tildes(p) for p in _RE_TOKEN.findall(restante)]
+    for i, palabra in enumerate(palabras):
+        siguiente = palabras[i + 1] if i + 1 < len(palabras) else ""
         if palabra[0].isdigit():
             encontrados.add(DATO_IRRESOLUBLE + ":" + palabra.replace(".", ""))
-        elif sin_tilde in VOCABULARIO and sin_tilde not in _AMBIGUAS_SUELTAS:
-            encontrados.add(DATO_IRRESOLUBLE + ":" + sin_tilde)
+        elif palabra in _ORDINALES_EN_PALABRAS:
+            encontrados.add(DATO_IRRESOLUBLE + ":" + palabra)
+        elif palabra in VOCABULARIO and (
+                palabra not in _AMBIGUAS_SUELTAS
+                or siguiente in _SUSTANTIVOS_DE_UNIDAD):
+            encontrados.add(DATO_IRRESOLUBLE + ":" + palabra)
     return encontrados
 
 
