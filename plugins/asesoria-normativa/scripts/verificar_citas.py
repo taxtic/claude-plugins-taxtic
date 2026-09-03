@@ -20,7 +20,6 @@ def _cargar_vecino(nombre):
 esquema = _cargar_vecino("esquema")
 literales = _cargar_vecino("literales")
 extraer_fuente = _cargar_vecino("extraer_fuente")
-catalogo = _cargar_vecino("catalogo")
 
 
 class GateRechazado(Exception):
@@ -52,22 +51,29 @@ class VariosRechazos(GateRechazado):
 LARGO_MINIMO_DE_CITA = 40
 
 
-def _pagina_normalizada(fuente, numero):
-    for pagina in fuente["paginas_normalizadas"]:
-        if pagina["n"] == numero:
-            return pagina["texto"]
-    return ""
+def _normalizar_la_fuente(fuente):
+    """Recalcula la normalización desde el texto por página.
+
+    No se usan `texto_normalizado` ni `paginas_normalizadas` tal como vienen en
+    el archivo: son campos derivados, y confiar en ellos deja que un
+    `fuente.json` editado a mano haga existir cualquier cita. Recalcularlos
+    cuesta milisegundos y ata la verificación al texto que se extrajo del PDF.
+    """
+    por_pagina = {p["n"]: extraer_fuente.normalizar_matching(p["texto"])
+                  for p in fuente["paginas"]}
+    return por_pagina, extraer_fuente.normalizar_matching(
+        "\n".join(p["texto"] for p in fuente["paginas"]))
 
 
-def _comprobar_una_cita(texto_cita, pagina, fuente, ruta):
+def _comprobar_una_cita(texto_cita, pagina, normalizada_por_pagina, completo, ruta):
     normalizada = extraer_fuente.normalizar_matching(texto_cita)
     if len(normalizada) < LARGO_MINIMO_DE_CITA:
         raise CitaAusente(
             ruta, f"cita de {len(normalizada)} caracteres normalizados; el mínimo "
                   f"es {LARGO_MINIMO_DE_CITA}")
-    if normalizada not in fuente["texto_normalizado"]:
+    if normalizada not in completo:
         raise CitaInexistente(ruta, "la cita no aparece literalmente en el documento")
-    if normalizada not in _pagina_normalizada(fuente, pagina):
+    if normalizada not in normalizada_por_pagina.get(pagina, ""):
         raise PaginaInvalida(ruta, f"la cita no está en la página {pagina}")
 
 
@@ -80,10 +86,13 @@ def _citas_de(objeto):
     return []
 
 
-def _comprobar_afirmacion(objeto, fuente, ruta, filas):
+def _comprobar_afirmacion(objeto, normalizada, ruta, filas):
+    por_pagina, completo = normalizada
     citas = _citas_de(objeto)
+    if not citas:
+        raise CitaAusente(ruta, "afirmación citada sin cita")
     for texto_cita, pagina in citas:
-        _comprobar_una_cita(texto_cita, pagina, fuente, ruta)
+        _comprobar_una_cita(texto_cita, pagina, por_pagina, completo, ruta)
 
     del_texto = literales.extraer(extraer_fuente.normalizar_lectura(objeto["texto"]))
 
@@ -138,7 +147,7 @@ def _acumular(rechazos, comprobar, *argumentos):
         rechazos.append(rechazo)
 
 
-def _recorrer_bloque(bloque, fuente, ruta, filas, rechazos):
+def _recorrer_bloque(bloque, normalizada, ruta, filas, rechazos):
     tipo = bloque["tipo"]
     if tipo == "subtitulo":
         return
@@ -150,25 +159,25 @@ def _recorrer_bloque(bloque, fuente, ruta, filas, rechazos):
             if derivada:
                 _acumular(rechazos, _comprobar_derivada, item, ruta_item, filas)
             else:
-                _acumular(rechazos, _comprobar_afirmacion, item, fuente, ruta_item, filas)
+                _acumular(rechazos, _comprobar_afirmacion, item, normalizada, ruta_item, filas)
         return
 
     if tipo == "tabla":
         for i, celda in enumerate(bloque["encabezado"]):
             if celda.get("texto", "").strip():
-                _acumular(rechazos, _comprobar_afirmacion, celda, fuente,
+                _acumular(rechazos, _comprobar_afirmacion, celda, normalizada,
                           f"{ruta}.encabezado[{i}]", filas)
         for f, fila in enumerate(bloque["filas"]):
             for c, celda in enumerate(fila):
                 if celda.get("texto", "").strip():
-                    _acumular(rechazos, _comprobar_afirmacion, celda, fuente,
+                    _acumular(rechazos, _comprobar_afirmacion, celda, normalizada,
                               f"{ruta}.filas[{f}][{c}]", filas)
         return
 
     if derivada:
         _acumular(rechazos, _comprobar_derivada, bloque, ruta, filas)
     else:
-        _acumular(rechazos, _comprobar_afirmacion, bloque, fuente, ruta, filas)
+        _acumular(rechazos, _comprobar_afirmacion, bloque, normalizada, ruta, filas)
 
 
 def verificar(resumen, fuente):
@@ -182,14 +191,15 @@ def verificar(resumen, fuente):
             raise SuplenciaFaltante(error.ruta, error.motivo) from error
         raise
 
+    normalizada = _normalizar_la_fuente(fuente)
     filas, rechazos = [], []
     for s, seccion in enumerate(resumen["secciones"]):
         ruta_seccion = f"secciones[{s}]"
         if seccion["id"] == "materia":
-            _acumular(rechazos, _comprobar_afirmacion, seccion["titulo"], fuente,
+            _acumular(rechazos, _comprobar_afirmacion, seccion["titulo"], normalizada,
                       f"{ruta_seccion}.titulo", filas)
         for b, bloque in enumerate(seccion["bloques"]):
-            _recorrer_bloque(bloque, fuente, f"{ruta_seccion}.bloques[{b}]",
+            _recorrer_bloque(bloque, normalizada, f"{ruta_seccion}.bloques[{b}]",
                              filas, rechazos)
     if rechazos:
         raise rechazos[0] if len(rechazos) == 1 else VariosRechazos(rechazos)

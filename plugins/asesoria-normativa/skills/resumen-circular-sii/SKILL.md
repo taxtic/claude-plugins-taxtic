@@ -134,9 +134,8 @@ Contrato cerrado: una propiedad que no esté en este esquema es error, no se ign
           "variante": "critico",
           "afirmacion": "citada",
           "texto": "Vencido el plazo, la presentación se declara inadmisible.",
-          "citas": [
-            { "texto": "vencido el plazo señalado la presentación será declarada inadmisible", "pagina": 2 }
-          ]
+          "cita": "vencido el plazo señalado la presentación será declarada inadmisible",
+          "pagina": 2
         }
       ]
     },
@@ -168,7 +167,7 @@ Contrato cerrado: una propiedad que no esté en este esquema es error, no se ign
 
 ### Reglas que el gate hace cumplir
 
-1. **Toda afirmación `citada` lleva cita textual y página.** La cita se copia de `paginas[].texto`, mínimo 40 caracteres una vez normalizada. Un párrafo, una nota o un ítem de lista llevan exactamente una cita (`cita` + `pagina`); una celda de tabla o un `callout` pueden llevar hasta cuatro (`citas`). `cita` y `citas` son mutuamente excluyentes.
+1. **Toda afirmación `citada` lleva cita textual y página.** La cita se copia de `paginas[].texto`, mínimo 40 caracteres una vez normalizada. Un párrafo, una nota o un ítem de lista llevan exactamente una cita (`cita` + `pagina`); solo una celda de tabla puede llevar hasta cuatro (`citas`), porque la grilla impide partir el contenido en dos. `cita` y `citas` son mutuamente excluyentes.
 
    **No transcribas los saltos de línea ni los cortes de palabra del PDF.** La comparación ignora espacios, guiones y comillas, así que escribe la cita en una sola línea con espacios simples: `deberá pronunciarse dentro del plazo` vale aunque la fuente diga `deberá pronun-\nciarse dentro del plazo`. Copiar los `\n` solo rompe el JSON.
 

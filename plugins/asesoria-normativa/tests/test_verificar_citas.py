@@ -249,3 +249,31 @@ def test_el_nombre_del_firmante_queda_trazado(tmp_path):
     vc.escribir_respaldo(filas, FUENTE, str(salida), "Asesor Tributario")
     contenido = salida.read_text(encoding="utf-8")
     assert "elaborado_por" in contenido and "Asesor Tributario" in contenido
+
+
+def test_un_callout_lleva_una_sola_cita():
+    """La union de varias citas respalda cada dato por separado pero no la
+    relacion entre ellos: con dos citas se puede afirmar que el plazo de un
+    articulo se reduce a N dias y que el gate lo acepte."""
+    def mutar(r):
+        r["secciones"].insert(1, {"id": "novedades", "bloques": [{
+            "tipo": "callout", "variante": "critico", "afirmacion": "citada",
+            "texto": "El plazo del artículo 123 bis se reduce a 5 días.",
+            "citas": [{"texto": "a" * 45, "pagina": 1},
+                      {"texto": "b" * 45, "pagina": 2}]}]})
+    with pytest.raises(vc.esquema.EsquemaInvalido) as e:
+        vc.verificar(_con(mutar), FUENTE)
+    assert "atomicidad" in str(e.value)
+
+def test_el_gate_no_confia_en_la_normalizacion_del_archivo():
+    """Son campos derivados: confiar en ellos deja que un fuente.json editado a
+    mano haga existir cualquier cita."""
+    fuente = copy.deepcopy(FUENTE)
+    inventada = "esta frase no aparece en ninguna parte del documento fuente"
+    fuente["texto_normalizado"] += ef.normalizar_matching(inventada)
+    fuente["paginas_normalizadas"][0]["texto"] += ef.normalizar_matching(inventada)
+    def mutar(r):
+        r["secciones"][0]["bloques"][0]["cita"] = inventada
+        r["secciones"][0]["bloques"][0]["texto"] = "Una afirmación sin datos."
+    with pytest.raises(vc.CitaInexistente):
+        vc.verificar(_con(mutar), fuente)

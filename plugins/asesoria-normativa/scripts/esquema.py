@@ -164,7 +164,14 @@ def _validar_bloque(bloque, id_seccion, paginas, ruta):
     elif tipo == "tabla":
         _validar_tabla(bloque, paginas, ruta)
     elif afirmacion == "citada":
-        _validar_texto_con_respaldo(bloque, paginas, ruta, permite_multiples=(tipo == "callout"))
+        # Un callout es prosa y lleva UNA cita, como un párrafo. La unión de
+        # varias citas respalda cada dato por separado pero no la relación
+        # entre ellos: con dos citas de páginas distintas se puede afirmar
+        # "el plazo del artículo 200 se reduce a 90 días" y que el gate lo
+        # acepte, porque una cita trae el artículo y la otra el plazo. La
+        # excepción son las celdas de tabla, donde la grilla impide partir el
+        # contenido en dos.
+        _validar_texto_con_respaldo(bloque, paginas, ruta, permite_multiples=False)
     else:
         if "cita" in bloque or "citas" in bloque:
             raise EsquemaInvalido(ruta, "una 'derivada' no lleva citas")

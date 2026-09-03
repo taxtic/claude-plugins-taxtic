@@ -42,9 +42,11 @@ Además, los plazos, fechas, cifras y referencias normativas de una afirmación 
 coincidir con los de su respaldo, y una cifra escrita en una forma que el detector no modela falla
 cerrada en vez de pasar sin comparar.
 
-**Qué no garantiza:** que la paráfrasis sea semánticamente fiel a la cita, que una recomendación
-derivada no afirme algo normativo de paso, que la extracción del PDF esté libre de artefactos de
-maquetado, ni que el documento siga vigente. Por eso `respaldo-citas.md` es un paso de revisión
+**Qué no garantiza:** que la paráfrasis sea semánticamente fiel a la cita —una afirmación con sus
+cifras bien respaldadas puede invertir el sentido si la cita empieza después de una negación—, que
+una cita disyuntiva no respalde una afirmación asertiva, que una recomendación derivada no afirme
+algo normativo de paso, que la extracción del PDF esté libre de artefactos de maquetado, ni que el
+documento siga vigente. Por eso `respaldo-citas.md` es un paso de revisión
 obligatorio antes de enviar, y **no se entrega al cliente**.
 
 ## Instalación
