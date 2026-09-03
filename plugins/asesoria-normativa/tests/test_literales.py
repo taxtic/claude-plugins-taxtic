@@ -106,8 +106,12 @@ def test_partes_sueltas_no_respaldan_una_fecha_completa():
 def test_anio_suelto_se_extrae_si_no_es_parte_de_una_fecha():
     assert "2026" in lit.extraer("correspondiente al año tributario 2026")
 
-def test_ordinales_fuera_del_parser():
+def test_ordinales_en_palabras_no_producen_cardinal():
+    """No se leen como cantidad, pero tampoco se dan por inexistentes: sin
+    cifra no hay dato que verificar, y con cifra cae al centinela residual."""
     assert lit.extraer("desde el primer día hábil siguiente") == set()
+    # "el 5° día" es una posición en el cómputo, no una cantidad de días
+    assert lit.extraer("desde el 5° día hábil siguiente") == {lit.MARCA_IRRESOLUBLE + "d"}
 
 def test_cantidad_irresoluble_no_produce_literal_silencioso():
     # "muchos días" no es una cantidad: no debe inventar un token
@@ -159,10 +163,15 @@ def test_fecha_inexistente_en_calendario_emite_centinela():
     assert lit.extraer("el 31 de febrero de 2026") == {lit.FECHA_IRRESOLUBLE}
     assert lit.extraer("el 13/45/2026") == {lit.FECHA_IRRESOLUBLE}
 
-def test_el_centinela_de_fecha_lleva_la_marca_comun():
-    """El gate rechaza todo token que empiece con la marca, sea plazo o fecha."""
-    assert lit.FECHA_IRRESOLUBLE.startswith(lit.MARCA_IRRESOLUBLE)
-    assert (lit.MARCA_IRRESOLUBLE + "d").startswith(lit.MARCA_IRRESOLUBLE)
+def test_todos_los_centinelas_llevan_la_marca_comun():
+    """Quien consume el módulo rechaza por la marca, así que todo centinela que
+    salga de extraer() tiene que llevarla, sea de plazo, de fecha o de dato."""
+    de_plazo = lit.extraer("transcurridos cinco y noventa dias")
+    de_fecha = lit.extraer("con fecha 31 de agost de 2026")
+    de_dato = lit.extraer("dentro de 48 horas")
+    for encontrados in (de_plazo, de_fecha, de_dato):
+        assert encontrados
+        assert all(t.startswith(lit.MARCA_IRRESOLUBLE) for t in encontrados)
 
 def test_dos_fechas_en_un_texto_se_atomizan_las_dos():
     assert lit.extraer("entre el 1 de enero de 2025 y el 31 de agosto de 2026") == {
@@ -256,3 +265,81 @@ def test_formas_no_gramaticales_emiten_centinela():
     assert lit.extraer("cien uno dias") == {marca}
     assert lit.extraer("ciento dias") == {marca}
     assert lit.extraer("un mil dias") == {marca}
+
+
+# --- Cifras que ninguna etapa reclama: el centinela residual es lo que impide
+# --- que una forma no modelada sea una fuga silenciosa.
+
+def test_forma_no_modelada_cae_en_centinela_residual():
+    for texto in ("dentro de 48 horas", "en 3 semanas", "el día 30 del mes",
+                  "rige desde el 1 de enero", "vence el 31/08/26",
+                  "los 30 primeros días", "el artículo 97 N° 4"):
+        encontrados = lit.extraer(texto)
+        assert lit.DATO_IRRESOLUBLE in encontrados, texto
+
+def test_una_fecha_sin_dia_no_se_degrada_a_anio_suelto():
+    assert lit.extraer("a contar de agosto de 2026") == {lit.FECHA_IRRESOLUBLE}
+
+def test_el_anio_suelto_sigue_saliendo_cuando_no_hay_fecha():
+    assert lit.extraer("correspondiente al año tributario 2026") == {"2026"}
+
+def test_texto_sin_cifras_no_produce_centinela_residual():
+    assert lit.extraer("el contribuyente puede impugnar el acto") == set()
+
+
+# --- Etapas que se pisaban entre sí: la corrida temporal mira hacia atrás
+# --- saltando lo que no es token, y sin consumir antes leía datos ajenos.
+
+def test_un_porcentaje_no_se_lee_como_plazo():
+    assert lit.extraer("un recargo del 10% a 60 días") == {"10pct", "60d"}
+
+def test_un_monto_no_se_lee_como_plazo():
+    assert lit.extraer("una multa de $500.000 a 30 días") == {"500000clp", "30d"}
+
+def test_un_numero_de_articulo_no_se_lee_como_plazo():
+    assert lit.extraer("amplía el plazo del artículo 59 a 12 meses") == {"art59", "12m"}
+
+
+# --- Montos
+
+def test_monto_con_signo_no_pierde_digitos():
+    """La rama del signo aceptaba cero grupos de miles y se quedaba con los
+    tres primeros dígitos: $3000 se leía como 300."""
+    assert lit.extraer("$3000") == {"3000clp"}
+    assert lit.extraer("$12345") == {"12345clp"}
+    assert lit.extraer("$1.500.000") == {"1500000clp"}
+
+def test_decimal_con_punto_no_pierde_la_parte_entera():
+    assert lit.extraer("una tasa de 1.5%") == {"1.5pct"}
+    assert lit.extraer("el valor de 1.5 UTM") == {"1.5utm"}
+
+
+# --- Normas
+
+def test_norma_en_plural_y_enumerada():
+    assert lit.extraer("las leyes 20.780 y 21.210") == {"ley20780", "ley21210"}
+    assert lit.extraer("las circulares 33 y 39") == {"circular33", "circular39"}
+
+def test_decreto_ley_con_espacios_y_puntos():
+    """D. L., D.L. y DL son la misma norma."""
+    for forma in ("D. L. 824", "D.L. 824", "DL 824", "decreto ley 824"):
+        assert lit.extraer("Se aplica el " + forma + ".") == {"dl824"}
+
+def test_tipo_de_norma_desconocido_no_desaparece():
+    """Si no se reconoce el tipo, el número cae al residuo como centinela en
+    vez de borrarse junto con el tramo."""
+    assert lit.DATO_IRRESOLUBLE in lit.extraer("el acuerdo 1234 del consejo")
+
+
+# --- Cantidades
+
+def test_una_cifra_al_lado_no_cura_una_cantidad_irresoluble():
+    marca = lit.MARCA_IRRESOLUBLE + "d"
+    assert lit.extraer("diez mil (5.000) días") == {marca}
+    assert lit.extraer("cien uno (90) días") == {marca}
+
+def test_una_corrida_demasiado_larga_no_se_trunca_a_un_valor():
+    """Cortar la corrida partiría una cantidad compuesta al medio y produciría
+    un valor que nadie escribió."""
+    largo = "de ciento veinte o 10 o 40 o 30 o ciento cuarenta y cinco días"
+    assert lit.extraer(largo) == {lit.MARCA_IRRESOLUBLE + "d"}

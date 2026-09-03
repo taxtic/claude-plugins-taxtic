@@ -14,12 +14,19 @@ Dos principios de diseño:
    "1.500 días" el separador de miles haría que se lea el plazo como 500 y que
    además aparezca un monto que nadie escribió.
 
-2. **Una forma reconocible que no se resuelve emite centinela, no silencio.**
-   Los centinelas empiezan con "?" y ninguna cita puede respaldarlos, así que
-   fuerzan el rechazo de la afirmación. Es preferible rechazar un dato ambiguo
-   a dejarlo pasar respaldado por otra cosa: si una fecha con formato no
-   soportado se degradara a su año suelto, cualquier mención de ese año la
-   respaldaría.
+2. **Nada con forma de dato pasa en silencio.** Lo que no se logra resolver
+   emite un token centinela que empieza con "?". Al terminar la tubería, si
+   quedan cifras sin consumir por ninguna etapa, se emite `?dato`: sin eso, la
+   garantía dependería de que este módulo modele *todas* las formas en que un
+   dato puede escribirse, que es un problema abierto —"dentro de 48 horas",
+   "artículo 97 N° 4", "el día 30", "1 de enero" sin año— y cada forma no
+   modelada sería una fuga silenciosa. Así, una forma desconocida falla cerrada.
+
+**Los centinelas no se respaldan entre sí por sí solos.** Dos cantidades
+irresolubles distintas producen el mismo token, así que bajo una comparación de
+subconjuntos una respaldaría a la otra. Quien consume este módulo debe rechazar
+por separado toda afirmación cuyos literales incluyan un token que empiece con
+`MARCA_IRRESOLUBLE`, antes de comparar con los de la cita.
 """
 import datetime
 import re
@@ -68,6 +75,9 @@ VOCABULARIO = set(_PALABRAS_0_29) | set(_DECENAS) | set(_CENTENAS) | {"y", "mil"
 # "o" y "a" separan cantidades alternativas ("treinta o sesenta días"); no son
 # parte de un número, así que no entran al vocabulario del parser.
 CONECTORES = {"o", "a"}
+# El ordinal masculino y el signo de grado marcan "el 5° día", que no es
+# una cantidad de días sino una posición en el cómputo.
+_MARCADORES_ORDINALES = {"°", "º"}
 
 _UNIDADES_TEMPORALES = _plegar({
     "día": "d", "días": "d", "mes": "m", "meses": "m", "año": "a", "años": "a",
@@ -84,6 +94,7 @@ _RE_FECHA_ISO = re.compile(r"\b((?:19|20)\d{2})[/.\-](\d{1,2})[/.\-](\d{1,2})\b"
 _RE_FECHA_NUMERICA = re.compile(r"\b(\d{1,2})[/.\-](\d{1,2})[/.\-]((?:19|20)\d{2})\b")
 _RE_FECHA_TEXTO = re.compile(
     r"\b(\d{1,2})\s*[°º]?\s+de\s+([a-záéíóúñ]+)\s+del?\s+((?:19|20)\d{2})\b")
+_RE_FECHA_SIN_DIA = re.compile(r"\b([a-záéíóúñ]+)\s+del?\s+((?:19|20)\d{2})\b")
 
 _RE_ARTICULO = re.compile(
     r"\b(?:art|arts|art[íi]culos?)\.?\s*"
@@ -92,17 +103,32 @@ _RE_ARTICULO = re.compile(
 _RE_NUMERO_DE_ARTICULO = re.compile(
     r"(\d+)(?:\s*(" + _SUFIJOS_DE_ARTICULO + r"))?")
 _RE_NORMA = re.compile(
-    r"\b(decreto\s+ley|d\.?\s*l\.?|ley|circular|resoluci[óo]n)\s*"
-    r"(?:exenta\s*)?(?:sii\s*)?(?:n[.°º]*\s*)?(\d{1,3}(?:\.\d{3})+|\d+)\b")
-_PREFIJO_DE_NORMA = {"decreto ley": "dl", "dl": "dl", "d.l.": "dl", "d.l": "dl",
-                     "dl.": "dl", "ley": "ley", "circular": "circular",
-                     "resolucion": "resolucion", "resolución": "resolucion"}
+    r"\b(decretos?\s+ley(?:es)?|decretos?\s+supremos?|d\.?\s*l\.?|d\.?\s*s\.?|"
+    r"leyes|ley|circulares|circular|resoluciones|resoluci[óo]n|oficios|oficio)\s*"
+    r"(?:exentas?\s*)?(?:sii\s*)?(?:n[.°º]*\s*|n[úu]meros?\s*)?"
+    r"((?:\d{1,3}(?:\.\d{3})+|\d+)(?:\s*(?:y|,)\s*(?:\d{1,3}(?:\.\d{3})+|\d+))*)")
+_RE_NUMERO_DE_NORMA = re.compile(r"\d{1,3}(?:\.\d{3})+|\d+")
+_PREFIJO_DE_NORMA = {"decretoley": "dl", "decretosleyes": "dl", "decretoleyes": "dl",
+                     "dl": "dl", "decretosupremo": "ds", "decretossupremos": "ds",
+                     "ds": "ds", "ley": "ley", "leyes": "ley",
+                     "circular": "circular", "circulares": "circular",
+                     "resolucion": "resolucion", "resoluciones": "resolucion",
+                     "oficio": "oficio", "oficios": "oficio"}
 
-_RE_PORCENTAJE = re.compile(r"(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?\s*%")
+# Un punto seguido de exactamente tres dígitos es separador de miles; en
+# cualquier otro caso es decimal. Sin distinguirlos, "1.5%" se leía como "5%".
+_NUMERO = r"\d{1,3}(?:\.\d{3})+|\d+"
+_RE_PORCENTAJE = re.compile(r"(" + _NUMERO + r")(?:[.,](\d{1,2})(?!\d))?\s*%")
 _RE_UNIDAD_REAJUSTABLE = re.compile(
-    r"\b(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?\s*(utm|uta|uf)\b")
-_RE_MONTO = re.compile(r"\$\s*(\d{1,3}(?:\.\d{3})*|\d+)|\b(\d{1,3}(?:\.\d{3})+)\b")
+    r"\b(" + _NUMERO + r")(?:[.,](\d{1,2})(?!\d))?\s*(utm|uta|uf)\b")
+# Un número pegado a una unidad temporal es un plazo, no un monto: la etapa
+# temporal corre después y necesita encontrarlo sin consumir.
+_SIGUE_UNIDAD_TEMPORAL = r"(?!\s*\)?\s*(?:d[ií]as?|mes|meses|a[nñ]os?)\b)"
+_RE_MONTO = re.compile(
+    r"\$\s*(" + _NUMERO + r")" + _SIGUE_UNIDAD_TEMPORAL +
+    r"|\b(\d{1,3}(?:\.\d{3})+)\b" + _SIGUE_UNIDAD_TEMPORAL)
 _RE_ANIO = re.compile(r"\b(?:19|20)\d{2}\b")
+_RE_CIFRA_RESIDUAL = re.compile(r"\d")
 
 
 def _a_entero(digitos):
@@ -207,6 +233,13 @@ def _consumir_fechas(texto):
         tokens.add(_token_de_fecha(anio, numero_de_mes, dia)
                    if numero_de_mes else FECHA_IRRESOLUBLE)
         tramos.append(encontrado.span())
+    texto = _enmascarar(texto, tramos); tramos = []
+    # "agosto de 2026" es una fecha a la que le falta el día. Dejarla pasar la
+    # degradaría a su año suelto, y cualquier mención de ese año la respaldaría.
+    for encontrado in _RE_FECHA_SIN_DIA.finditer(texto):
+        if _sin_tildes(encontrado.group(1)) in _MESES:
+            tokens.add(FECHA_IRRESOLUBLE)
+            tramos.append(encontrado.span())
     return tokens, _enmascarar(texto, tramos)
 
 
@@ -237,6 +270,11 @@ def _segmentar_cantidades(corrida):
             return None  # dos cifras sin conector que las separe: ambiguo
         en_cifras = _a_entero(digitos[0]) if digitos else None
         en_palabras = parsear_cardinal(palabras) if palabras else None
+        if palabras and en_palabras is None:
+            # Había palabras de cantidad que no resuelven. Que venga una cifra al
+            # lado no las cura: "diez mil (5.000) días" no es una forma mixta,
+            # es un texto que dice dos cosas distintas.
+            return None
         if en_cifras is not None and en_palabras is not None:
             # La normativa escribe la forma mixta "noventa (90) días". Si las dos
             # formas no coinciden el texto se contradice, y eso no se resuelve.
@@ -261,17 +299,31 @@ def _consumir_cantidades_temporales(texto):
         if sufijo is None:
             continue
         corrida, inicio_corrida, j = [], None, i - 1
-        while j >= 0 and len(corrida) < _MAX_TOKENS_CANTIDAD:
+        truncada = False
+        siguiente_inicio = tokens[i][1]
+        ordinal = False
+        while j >= 0:
+            # "el 5° día hábil" es el quinto día, no cinco días. El marcador no
+            # es un token, así que hay que mirarlo en el texto crudo.
+            if _MARCADORES_ORDINALES & set(texto[tokens[j][2]:siguiente_inicio]):
+                ordinal = True
             candidato = _sin_tildes(tokens[j][0])
             if not (candidato[0].isdigit() or candidato in VOCABULARIO
                     or candidato in CONECTORES):
+                break
+            siguiente_inicio = tokens[j][1]
+            if len(corrida) >= _MAX_TOKENS_CANTIDAD:
+                # La corrida sigue más allá del tope: cortarla partiría una
+                # cantidad compuesta al medio y produciría un valor inventado.
+                truncada = True
                 break
             corrida.insert(0, candidato); inicio_corrida = tokens[j][1]; j -= 1
         while corrida and corrida[0] in CONECTORES:
             corrida.pop(0)
         if not corrida:
             continue
-        valores = _segmentar_cantidades(corrida)
+        valores = (None if truncada or ordinal
+                   else _segmentar_cantidades(corrida))
         if valores is None:
             encontrados.add(MARCA_IRRESOLUBLE + sufijo)
         else:
@@ -289,10 +341,17 @@ def _consumir_referencias(texto):
         tramos.append(encontrado.span())
     texto = _enmascarar(texto, tramos); tramos = []
     for encontrado in _RE_NORMA.finditer(texto):
-        prefijo = re.sub(r"\s+", " ", encontrado.group(1)).strip()
-        clave = _PREFIJO_DE_NORMA.get(_sin_tildes(prefijo).replace(" .", "."))
-        if clave:
-            encontrados.add(clave + encontrado.group(2).replace(".", ""))
+        # "D. L.", "D.L." y "DL" son la misma norma: se compara sin espacios ni
+        # puntos para no depender de cómo la escribió el redactor.
+        prefijo = re.sub(r"[\s.]", "", _sin_tildes(encontrado.group(1)))
+        clave = _PREFIJO_DE_NORMA.get(prefijo)
+        if not clave:
+            # Se reconoció la forma pero no el tipo de norma: no se enmascara,
+            # así el número cae al residuo y termina como centinela en vez de
+            # desaparecer sin dejar rastro.
+            continue
+        for numero in _RE_NUMERO_DE_NORMA.findall(encontrado.group(2)):
+            encontrados.add(clave + numero.replace(".", ""))
         tramos.append(encontrado.span())
     return encontrados, _enmascarar(texto, tramos)
 
@@ -334,14 +393,30 @@ def _consumir_montos(texto):
     return encontrados, _enmascarar(texto, tramos)
 
 
+DATO_IRRESOLUBLE = MARCA_IRRESOLUBLE + "dato"
+
+# El orden importa. Las referencias, los porcentajes y los montos van antes que
+# las cantidades temporales porque la corrida temporal mira hacia atrás saltando
+# los caracteres que no son token: sin consumirlos primero, "un recargo del 10%
+# a 60 días" leería un plazo de 10 días que nadie escribió, y "el artículo 59 a
+# 12 meses" leería un plazo de 59 meses.
+_ETAPAS = (_consumir_fechas, _consumir_referencias, _consumir_porcentajes,
+           _consumir_montos, _consumir_cantidades_temporales)
+
+
 def extraer(texto):
     """Tokens canónicos de los datos verificables presentes en `texto`."""
     restante = texto.lower()
     encontrados = set()
-    for consumir in (_consumir_fechas, _consumir_cantidades_temporales,
-                     _consumir_referencias, _consumir_porcentajes,
-                     _consumir_montos):
+    for consumir in _ETAPAS:
         nuevos, restante = consumir(restante)
         encontrados |= nuevos
-    encontrados.update(_RE_ANIO.findall(restante))
+    for anio in _RE_ANIO.findall(restante):
+        encontrados.add(anio)
+    restante = _RE_ANIO.sub(" ", restante)
+    # Toda cifra que ninguna etapa reclamó es un dato en una forma que este
+    # módulo no modela. Emitirla como centinela hace que la afirmación falle
+    # cerrada, en vez de que la forma desconocida sea una fuga silenciosa.
+    if _RE_CIFRA_RESIDUAL.search(restante):
+        encontrados.add(DATO_IRRESOLUBLE)
     return encontrados
