@@ -21,6 +21,7 @@ catalogo = _cargar_vecino("catalogo")
 # normalizados, y la normalización vive en el gate. El esquema comprueba
 # presencia y tipo; el gate comprueba el largo real.
 MAXIMO_DE_CITAS_POR_CELDA = 4
+LARGO_MAXIMO_DE_FIRMA = 120
 
 # Prefijo estable del único motivo que el gate reetiqueta como falta de
 # suplencia. Un 'suple_seccion' mal ubicado no entra acá: es error de contrato.
@@ -134,7 +135,7 @@ def _validar_bloque(bloque, id_seccion, paginas, ruta):
     if not isinstance(bloque, dict):
         raise EsquemaInvalido(ruta, "cada bloque debe ser un objeto")
     tipo = bloque.get("tipo")
-    if tipo not in _CAMPOS_POR_BLOQUE:
+    if not isinstance(tipo, str) or tipo not in _CAMPOS_POR_BLOQUE:
         raise EsquemaInvalido(ruta, f"tipo de bloque desconocido: {tipo!r}")
     if tipo not in catalogo.bloques_permitidos(id_seccion):
         raise EsquemaInvalido(ruta, f"'{tipo}' no está permitido en '{id_seccion}'")
@@ -144,9 +145,9 @@ def _validar_bloque(bloque, id_seccion, paginas, ruta):
         _exigir_cadena(bloque, "texto", ruta)
 
     if tipo == "subtitulo":
-        if bloque.get("rotulo_id") not in catalogo.SUBTITULOS:
-            raise EsquemaInvalido(
-                ruta, f"rotulo_id fuera del catálogo: {bloque.get('rotulo_id')!r}")
+        rotulo = bloque.get("rotulo_id")
+        if not isinstance(rotulo, str) or rotulo not in catalogo.SUBTITULOS:
+            raise EsquemaInvalido(ruta, f"rotulo_id fuera del catálogo: {rotulo!r}")
         return
 
     afirmacion = bloque.get("afirmacion")
@@ -187,8 +188,11 @@ def _validar_items(bloque, afirmacion, id_seccion, paginas, ruta):
                 ruta_item, "'suple_seccion' solo es válido en un item 'derivada' "
                            "de la sección 'a_verificar'")
         if afirmacion == "derivada":
-            if "cita" in item or "citas" in item:
-                raise EsquemaInvalido(ruta_item, "una 'derivada' no lleva citas")
+            sobrantes = {"cita", "citas", "pagina"} & set(item)
+            if sobrantes:
+                raise EsquemaInvalido(
+                    ruta_item, "una 'derivada' no lleva aparato de cita: "
+                               + ", ".join(sorted(sobrantes)))
         else:
             _validar_texto_con_respaldo(item, paginas, ruta_item, permite_multiples=False)
 
@@ -227,10 +231,18 @@ def _validar_celda(celda, paginas, ruta):
 
 def validar(resumen, fuente):
     """Valida resumen.json contra el contrato. Levanta EsquemaInvalido al primer problema."""
+    if not isinstance(fuente, dict):
+        raise EsquemaInvalido("fuente", "fuente.json debe ser un objeto")
     tipo = fuente.get("tipo")
-    if tipo not in catalogo.PERFILES:
+    if not isinstance(tipo, str) or tipo not in catalogo.PERFILES:
         raise EsquemaInvalido("fuente", f"tipo de documento desconocido: {tipo!r}")
-    paginas = fuente["metricas"]["paginas"]
+    metricas = fuente.get("metricas")
+    if not isinstance(metricas, dict):
+        raise EsquemaInvalido("fuente", "falta el bloque 'metricas'")
+    paginas = metricas.get("paginas")
+    if not isinstance(paginas, int) or isinstance(paginas, bool) or paginas < 1:
+        raise EsquemaInvalido(
+            "fuente", f"'metricas.paginas' debe ser un entero positivo: {paginas!r}")
     perfil = catalogo.PERFILES[tipo]
 
     if not isinstance(resumen, dict):
@@ -243,7 +255,14 @@ def validar(resumen, fuente):
         raise EsquemaInvalido("meta", "'meta' debe ser un objeto")
     _exigir_campos(meta, _CAMPOS_DE_META, "meta")
     if "elaborado_por" in meta:
-        _exigir_cadena(meta, "elaborado_por", "meta")
+        firma = _exigir_cadena(meta, "elaborado_por", "meta")
+        # Es el unico texto del documento que no pasa por el gate, porque lo
+        # aporta el contador. Acotarlo evita que sea un hueco por donde entre
+        # prosa sin respaldo a la linea de metadata.
+        if len(firma) > LARGO_MAXIMO_DE_FIRMA:
+            raise EsquemaInvalido(
+                "meta", f"'elaborado_por' excede {LARGO_MAXIMO_DE_FIRMA} caracteres: "
+                        "es el nombre de quien firma, no un campo de texto libre")
 
     secciones = resumen["secciones"]
     if not isinstance(secciones, list) or not secciones:
@@ -257,11 +276,20 @@ def validar(resumen, fuente):
         _exigir_campos(seccion, _CAMPOS_DE_SECCION, ruta)
         _exigir_requeridos(seccion, {"id", "bloques"}, ruta)
         id_seccion = seccion.get("id")
-        if id_seccion not in catalogo.SECCIONES:
+        if not isinstance(id_seccion, str) or id_seccion not in catalogo.SECCIONES:
             raise EsquemaInvalido(ruta, f"id de sección desconocido: {id_seccion!r}")
-        if id_seccion in perfil["prohibidas"]:
+        # Falla cerrada: se exige que el perfil la admita, en vez de rechazar
+        # solo lo prohibido. Con la regla al revés, una sección que el perfil no
+        # clasifique pasa el gate y después desaparece del orden de emisión, y
+        # el builder la emite después de las secciones de cierre.
+        if id_seccion not in perfil["obligatorias"] and id_seccion not in perfil["sugeridas"]:
             raise EsquemaInvalido(
-                ruta, f"'{id_seccion}' está prohibida en un documento de tipo '{tipo}'")
+                ruta, f"'{id_seccion}' no está admitida en un documento de tipo '{tipo}'")
+        if id_seccion != "materia" and id_seccion in presentes:
+            # Solo `materia` es repetible; duplicar otra emite dos veces el mismo
+            # encabezado, y con las de cierre parte el documento en dos.
+            raise EsquemaInvalido(
+                ruta, f"'{id_seccion}' está repetida y solo 'materia' es repetible")
         presentes.append(id_seccion)
 
         if id_seccion == "materia":
@@ -293,21 +321,36 @@ def _validar_suplencias(resumen, presentes, perfil):
             continue
         for b, bloque in enumerate(seccion["bloques"]):
             for i, item in enumerate(bloque.get("items", [])):
-                objetivo = item.get("suple_seccion")
-                if objetivo is None:
+                if "suple_seccion" not in item:
                     continue
+                objetivo = item["suple_seccion"]
                 ruta = f"secciones[{s}].bloques[{b}].items[{i}]"
+                if not isinstance(objetivo, str):
+                    raise EsquemaInvalido(
+                        ruta, f"'suple_seccion' debe nombrar una sección: {objetivo!r}")
                 if objetivo not in perfil["obligatorias"]:
                     raise EsquemaInvalido(
                         ruta, f"'{objetivo}' no es obligatoria en este perfil: no se suple")
                 if objetivo in presentes:
                     raise EsquemaInvalido(
                         ruta, f"'{objetivo}' está presente: no corresponde suplirla")
+                if objetivo in suplidas:
+                    raise EsquemaInvalido(
+                        ruta, f"'{objetivo}' ya se declaró suplida en {suplidas[objetivo]}")
                 suplidas[objetivo] = ruta
 
     faltantes = [s for s in perfil["obligatorias"] if s not in presentes and s not in suplidas]
-    if faltantes:
+    if not faltantes:
+        return
+    # `a_verificar` es donde se declara la suplencia: pedir que se declare su
+    # propia ausencia ahí adentro es insatisfacible, y el gate lo reetiquetaría
+    # como falta de suplencia cuando lo que falta es la sección entera.
+    if "a_verificar" in faltantes:
         raise EsquemaInvalido(
             "secciones",
-            MOTIVO_OBLIGATORIA_AUSENTE + ", y ningún item de a_verificar las declara "
-            "en 'suple_seccion': " + ", ".join(faltantes))
+            MOTIVO_OBLIGATORIA_AUSENTE + " y 'a_verificar' es una de ellas, así que "
+            "no hay dónde declarar las suplencias: " + ", ".join(faltantes))
+    raise EsquemaInvalido(
+        "secciones",
+        MOTIVO_OBLIGATORIA_AUSENTE + ", y ningún item de a_verificar las declara "
+        "en 'suple_seccion': " + ", ".join(faltantes))

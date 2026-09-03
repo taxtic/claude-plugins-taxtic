@@ -327,3 +327,161 @@ def test_suple_seccion_en_item_citado_rechazada():
         item["suple_seccion"] = "tema"
     with pytest.raises(esq.EsquemaInvalido):
         esq.validar(_con(mutar), FUENTE)
+
+
+# --- Reglas duras que antes pasaban por coincidencia léxica: estos tests fallan
+# --- si la regla se borra del validador, no si otra la ataja por casualidad.
+
+def test_derivada_fuera_de_lugar_sin_cita_rechazada():
+    """El caso que importa: afirmación normativa pura, sin literales y sin cita,
+    en una sección cualquiera. Es lo que la regla de ubicación hace imposible."""
+    def mutar(r):
+        r["secciones"][0]["bloques"][0] = {
+            "tipo": "parrafo", "afirmacion": "derivada",
+            "texto": "La interposición del recurso suspende el plazo para reclamar."}
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert "gestiones" in str(e.value)
+
+def test_suple_seccion_en_gestiones_con_a_verificar_presente():
+    """Aísla la regla de ubicación: no falta ninguna obligatoria, así que el
+    único motivo posible de rechazo es dónde está declarada la suplencia."""
+    def mutar(r):
+        r["secciones"][2]["bloques"][0]["items"][0]["suple_seccion"] = "tema"
+        del r["secciones"][0]
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert "a_verificar" in e.value.motivo
+
+def test_el_motivo_de_obligatoria_ausente_conserva_su_prefijo():
+    """El gate reetiqueta por este prefijo: cambiarlo rompe la clasificación
+    sin que ningún otro test se ponga rojo."""
+    def mutar(r): del r["secciones"][0]
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert e.value.motivo.startswith(esq.MOTIVO_OBLIGATORIA_AUSENTE)
+
+def test_sin_a_verificar_el_mensaje_no_pide_lo_imposible():
+    """Pedir que se declare la ausencia de a_verificar dentro de a_verificar
+    no tiene solución."""
+    def mutar(r): del r["secciones"][3]
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert "no hay dónde declarar" in e.value.motivo
+
+def test_la_misma_seccion_no_se_suple_dos_veces():
+    def mutar(r):
+        del r["secciones"][0]
+        a_verificar = next(s for s in r["secciones"] if s["id"] == "a_verificar")
+        items = a_verificar["bloques"][0]["items"]
+        items[0]["suple_seccion"] = "tema"
+        items.append({"texto": "También falta el tema.", "suple_seccion": "tema"})
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert "ya se declaró suplida" in e.value.motivo
+
+def test_solo_materia_es_repetible():
+    def mutar(r): r["secciones"].append(copy.deepcopy(r["secciones"][0]))
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert "repetida" in e.value.motivo
+
+def test_materia_si_es_repetible():
+    resumen = copy.deepcopy(RESUMEN_VALIDO)
+    resumen["secciones"].insert(2, copy.deepcopy(resumen["secciones"][1]))
+    esq.validar(resumen, FUENTE)
+
+def test_una_seccion_no_admitida_por_el_perfil_se_rechaza():
+    """Falla cerrada: no basta con que no esté prohibida.
+
+    La sección se rechaza durante el recorrido, antes de comprobar las
+    obligatorias, así que el motivo es el perfil y no otra ausencia."""
+    def mutar(r):
+        r["secciones"].insert(0, {"id": "deroga", "bloques": [
+            {"tipo": "parrafo", "afirmacion": "citada",
+             "texto": "Deja sin efecto la instrucción anterior.",
+             "cita": "z" * 45, "pagina": 1}]})
+    esq.validar(_con(mutar), FUENTE)  # `deroga` es sugerida en circular
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), {**FUENTE, "tipo": "oficio"})
+    assert "deroga" in e.value.motivo
+
+def test_item_derivada_no_lleva_pagina_suelta():
+    def mutar(r): r["secciones"][2]["bloques"][0]["items"][0]["pagina"] = 999
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert "pagina" in e.value.motivo
+
+def test_elaborado_por_no_es_un_campo_de_texto_libre():
+    def mutar(r):
+        r["meta"]["elaborado_por"] = "Asesor Tributario. " + "Nota normativa. " * 20
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(_con(mutar), FUENTE)
+    assert "elaborado_por" in e.value.motivo
+
+
+# --- La fuente malformada da EsquemaInvalido con ruta, no un traceback
+
+def test_fuente_malformada_da_error_interpretable():
+    for fuente in ({}, {"tipo": "circular"},
+                   {"tipo": "circular", "metricas": {}},
+                   {"tipo": "circular", "metricas": {"paginas": "17"}},
+                   {"tipo": ["circular"], "metricas": {"paginas": 17}}):
+        with pytest.raises(esq.EsquemaInvalido):
+            esq.validar(RESUMEN_VALIDO, fuente)
+
+def test_un_valor_no_hashable_no_revienta():
+    for mutacion in (lambda r: r["secciones"][0].__setitem__("id", ["tema"]),
+                     lambda r: r["secciones"][0]["bloques"][0].__setitem__(
+                         "tipo", ["parrafo"])):
+        with pytest.raises(esq.EsquemaInvalido):
+            esq.validar(_con(mutacion), FUENTE)
+
+
+# --- Los otros dos perfiles, que no tenían ninguna cobertura
+
+FUENTE_OFICIO = {**FUENTE, "tipo": "oficio"}
+
+RESUMEN_OFICIO = {
+    "meta": {"elaborado_por": "Asesor Tributario"},
+    "secciones": [
+        {"id": "caso_consultado", "bloques": [
+            {"tipo": "parrafo", "afirmacion": "citada",
+             "texto": "Se consulta por el tratamiento del gasto.",
+             "cita": "a" * 45, "pagina": 1}]},
+        {"id": "tema", "bloques": [
+            {"tipo": "parrafo", "afirmacion": "citada", "texto": "Criterio del SII.",
+             "cita": "b" * 45, "pagina": 1}]},
+        {"id": "gestiones", "bloques": [
+            {"tipo": "lista", "afirmacion": "derivada",
+             "items": [{"texto": "Revisar los antecedentes."}]}]},
+        {"id": "a_verificar", "bloques": [
+            {"tipo": "lista", "afirmacion": "derivada",
+             "items": [{"texto": "Confirmar la vigencia del criterio."}]}]},
+    ],
+}
+
+
+def test_perfil_oficio_valido():
+    esq.validar(RESUMEN_OFICIO, FUENTE_OFICIO)
+
+def test_el_oficio_exige_caso_consultado():
+    resumen = copy.deepcopy(RESUMEN_OFICIO)
+    del resumen["secciones"][0]
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(resumen, FUENTE_OFICIO)
+    assert "caso_consultado" in e.value.motivo
+
+def test_el_oficio_prohibe_deroga():
+    resumen = copy.deepcopy(RESUMEN_OFICIO)
+    resumen["secciones"][1]["id"] = "deroga"
+    with pytest.raises(esq.EsquemaInvalido):
+        esq.validar(resumen, FUENTE_OFICIO)
+
+def test_la_resolucion_exige_procedimiento_y_vigencia():
+    resumen = copy.deepcopy(RESUMEN_OFICIO)
+    resumen["secciones"][0]["id"] = "tema"
+    del resumen["secciones"][1]
+    with pytest.raises(esq.EsquemaInvalido) as e:
+        esq.validar(resumen, {**FUENTE, "tipo": "resolucion"})
+    assert "procedimiento" in e.value.motivo or "alcance" in e.value.motivo
