@@ -16,11 +16,19 @@ Dos principios de diseño:
 
 2. **Nada con forma de dato pasa en silencio.** Lo que no se logra resolver
    emite un token centinela que empieza con "?". Al terminar la tubería, si
-   quedan cifras sin consumir por ninguna etapa, se emite `?dato`: sin eso, la
-   garantía dependería de que este módulo modele *todas* las formas en que un
-   dato puede escribirse, que es un problema abierto —"dentro de 48 horas",
-   "artículo 97 N° 4", "el día 30", "1 de enero" sin año— y cada forma no
+   sobra algo con forma de dato —una cifra, una palabra de cantidad o el nombre
+   de un mes— se emite un centinela: sin eso, la garantía dependería de que
+   este módulo modele *todas* las formas en que un dato puede escribirse, que
+   es un problema abierto —"dentro de 48 horas", "artículo 97 N° 4", "el día
+   30", "treinta por ciento", "mil unidades tributarias"— y cada forma no
    modelada sería una fuga silenciosa. Así, una forma desconocida falla cerrada.
+
+   **No basta con buscar cifras.** Una cantidad escrita íntegramente en
+   palabras con una unidad que no sea día, mes o año no deja un solo dígito, y
+   sin revisar también el vocabulario de números salía conjunto vacío: una
+   afirmación sin literales la respalda cualquier cita. Quien redacta debe
+   escribir esas cantidades en cifras —"30%" y no "treinta por ciento"—, que es
+   además la forma inequívoca en un documento que se firma.
 
 **Los centinelas no se respaldan entre sí por sí solos.** Dos cantidades
 irresolubles distintas producen el mismo token, así que bajo una comparación de
@@ -69,7 +77,12 @@ _DECENAS = _plegar({"treinta": 30, "cuarenta": 40, "cincuenta": 50,
 _CENTENAS = _plegar({"cien": 100, "ciento": 100, "doscientos": 200,
                      "trescientos": 300, "cuatrocientos": 400, "quinientos": 500,
                      "seiscientos": 600, "setecientos": 700, "ochocientos": 800,
-                     "novecientos": 900})
+                     "novecientos": 900,
+                     # Las unidades tributarias y de fomento son femeninas:
+                     # "quinientas unidades de fomento".
+                     "doscientas": 200, "trescientas": 300, "cuatrocientas": 400,
+                     "quinientas": 500, "seiscientas": 600, "setecientas": 700,
+                     "ochocientas": 800, "novecientas": 900})
 
 VOCABULARIO = set(_PALABRAS_0_29) | set(_DECENAS) | set(_CENTENAS) | {"y", "mil"}
 # "o" y "a" separan cantidades alternativas ("treinta o sesenta días"); no son
@@ -404,6 +417,29 @@ _ETAPAS = (_consumir_fechas, _consumir_referencias, _consumir_porcentajes,
            _consumir_montos, _consumir_cantidades_temporales)
 
 
+# Palabras que están en el vocabulario de números pero que, sueltas, casi nunca
+# son una cantidad: el artículo indefinido y la conjunción. Marcarlas haría
+# fallar cerrada cualquier frase con "un recurso" o con una enumeración.
+_AMBIGUAS_SUELTAS = {"un", "una", "uno", "y"}
+
+
+def _hay_dato_sin_reclamar(restante):
+    """Sobras con forma de dato que ninguna etapa consumió.
+
+    No basta con buscar cifras: una cantidad escrita íntegramente en palabras
+    con una unidad que el módulo no modela —"treinta por ciento", "mil unidades
+    tributarias", "tres millones de pesos"— no deja un solo dígito, y sin esto
+    salía conjunto vacío y **cualquier** cita la respaldaba.
+    """
+    if _RE_CIFRA_RESIDUAL.search(restante):
+        return True
+    for palabra in _RE_TOKEN.findall(restante):
+        sin_tilde = _sin_tildes(palabra)
+        if sin_tilde in VOCABULARIO and sin_tilde not in _AMBIGUAS_SUELTAS:
+            return True
+    return False
+
+
 def extraer(texto):
     """Tokens canónicos de los datos verificables presentes en `texto`."""
     restante = texto.lower()
@@ -414,9 +450,15 @@ def extraer(texto):
     for anio in _RE_ANIO.findall(restante):
         encontrados.add(anio)
     restante = _RE_ANIO.sub(" ", restante)
-    # Toda cifra que ninguna etapa reclamó es un dato en una forma que este
-    # módulo no modela. Emitirla como centinela hace que la afirmación falle
-    # cerrada, en vez de que la forma desconocida sea una fuga silenciosa.
-    if _RE_CIFRA_RESIDUAL.search(restante):
+    # Un mes suelto es una fecha a la que le falta el resto: "primero de enero"
+    # o "el mes de agosto" son datos, y sin marcarlos pasaban en silencio.
+    if any(_sin_tildes(p) in _MESES for p in _RE_TOKEN.findall(restante)):
+        encontrados.add(FECHA_IRRESOLUBLE)
+        restante = " ".join(p for p in _RE_TOKEN.findall(restante)
+                            if _sin_tildes(p) not in _MESES)
+    # Lo que ninguna etapa reclamó es un dato en una forma que este módulo no
+    # modela. Emitirlo como centinela hace que la afirmación falle cerrada, en
+    # vez de que la forma desconocida sea una fuga silenciosa.
+    if _hay_dato_sin_reclamar(restante):
         encontrados.add(DATO_IRRESOLUBLE)
     return encontrados

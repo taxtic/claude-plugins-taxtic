@@ -63,8 +63,10 @@ def test_extrae_referencia_normativa():
     assert "art124" in lit.extraer("los actos del art. 124")
 
 def test_referencia_normativa_no_usa_palabras():
-    # los números de artículo se escriben siempre en dígitos en la normativa chilena
-    assert lit.extraer("el artículo ciento veinticuatro") == set()
+    # Los números de artículo se escriben siempre en dígitos en la normativa
+    # chilena, así que la forma en palabras no resuelve a una referencia. Pero
+    # tampoco pasa en silencio: es un dato en una forma no modelada.
+    assert lit.extraer("el artículo ciento veinticuatro") == {lit.DATO_IRRESOLUBLE}
 
 def test_extrae_porcentaje_y_monto():
     assert "27pct" in lit.extraer("tasa de 27%")
@@ -342,4 +344,30 @@ def test_una_corrida_demasiado_larga_no_se_trunca_a_un_valor():
     """Cortar la corrida partiría una cantidad compuesta al medio y produciría
     un valor que nadie escribió."""
     largo = "de ciento veinte o 10 o 40 o 30 o ciento cuarenta y cinco días"
-    assert lit.extraer(largo) == {lit.MARCA_IRRESOLUBLE + "d"}
+    encontrados = lit.extraer(largo)
+    assert lit.MARCA_IRRESOLUBLE + "d" in encontrados
+    # ningún valor concreto: truncar la corrida inventaría uno
+    assert not any(t[0].isdigit() for t in encontrados)
+
+
+# --- Cantidades en palabras con unidad no temporal. Sin esto no dejaban ni un
+# --- dígito, salía conjunto vacío, y cualquier cita respaldaba la afirmación.
+
+def test_cantidad_en_palabras_con_unidad_no_temporal_falla_cerrada():
+    for texto in ("un recargo de treinta por ciento sobre el impuesto",
+                  "una multa de mil unidades tributarias mensuales",
+                  "tres millones de pesos",
+                  "quinientas unidades de fomento"):
+        assert lit.DATO_IRRESOLUBLE in lit.extraer(texto), texto
+
+def test_un_mes_suelto_es_una_fecha_incompleta():
+    assert lit.FECHA_IRRESOLUBLE in lit.extraer("el plazo vence el primero de enero")
+    assert lit.FECHA_IRRESOLUBLE in lit.extraer("durante el mes de agosto")
+
+def test_el_articulo_indefinido_y_la_conjuncion_no_disparan_centinela():
+    """Están en el vocabulario de números pero sueltos no son cantidades."""
+    for texto in ("el contribuyente presenta un recurso",
+                  "una circular del Servicio",
+                  "la reposición y el recurso jerárquico proceden",
+                  "el Servicio debe pronunciarse fundadamente"):
+        assert lit.extraer(texto) == set(), texto

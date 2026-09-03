@@ -25,6 +25,9 @@ _CARACTERES_DE_COMILLA = ('"', "'", "`")
 _RE_CORTE_DE_LINEA = re.compile(
     r"(?<=[^\W\d_])[-\u2010\u2011\u00ad][ \t]*\n[ \t]*(?=[^\W\d_])")
 _RE_ESPACIOS = re.compile(r"\s+")
+# Un guion con cifras a ambos lados separa cantidades y se conserva; el resto
+# es maquetado o puntuación y se elimina para que los dos lados converjan.
+_RE_GUION_ENTRE_LETRAS = re.compile(r"(?<!\d)-|-(?!\d)")
 
 
 def normalizar_lectura(texto):
@@ -52,7 +55,11 @@ def normalizar_matching(texto):
     esto los dos lados no convergen.
     """
     texto = normalizar_lectura(texto)
-    for caracter in (" ", "-", *_CARACTERES_DE_COMILLA):
+    # El guion entre dos cifras NO se elimina: "30-60 UTM" y "3060 UTM" son
+    # cantidades distintas, y borrarlo dejaba que una cita reescribiera un rango
+    # de la fuente como un número único que el documento afirmaba después.
+    texto = _RE_GUION_ENTRE_LETRAS.sub("", texto)
+    for caracter in (" ", *_CARACTERES_DE_COMILLA):
         texto = texto.replace(caracter, "")
     return texto
 

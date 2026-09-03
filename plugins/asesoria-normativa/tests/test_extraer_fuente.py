@@ -478,3 +478,13 @@ def test_pdf_sin_capa_de_texto_aborta(tmp_path, monkeypatch):
                         type("m", (), {"PdfReader": lambda ruta: LectorFalso()}))
     with pytest.raises(ef.PdfSinTexto):
         ef.leer_pdf("cualquiera.pdf")
+
+
+def test_n2_conserva_el_guion_entre_cifras():
+    """"30-60 UTM" y "3060 UTM" son cantidades distintas: borrar el guion dejaba
+    que una cita reescribiera un rango de la fuente como un número único."""
+    assert (ef.normalizar_matching("de 30-60 UTM")
+            != ef.normalizar_matching("de 3060 UTM"))
+    # el guion de maquetado entre letras se sigue eliminando
+    assert (ef.normalizar_matching("jurídico-tributario")
+            == ef.normalizar_matching("jurídicotributario"))
