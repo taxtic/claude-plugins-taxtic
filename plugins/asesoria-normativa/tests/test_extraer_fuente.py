@@ -41,3 +41,178 @@ def test_n2_resuelve_la_asimetria_del_guion():
 def test_n2_es_idempotente_sobre_su_propia_salida():
     una_vez = ef.normalizar_matching("plazo de 90 días")
     assert ef.normalizar_matching(una_vez) == una_vez
+
+import pytest
+
+# Bloque identificatorio con la forma del PDF real. En la Circular 35 este
+# recuadro sale AL FINAL del texto de la página 1, después del cuerpo.
+PAGINA_1 = """I. INTRODUCCIÓN
+El Servicio de Impuestos Internos ha centrado sus esfuerzos en mejorar la relación
+con los contribuyentes.
+DEPARTAMENTO EMISOR:
+Subdirección Jurídica
+CIRCULAR N°35.-
+SISTEMA DE PUBLICACIONES ADMINISTRATIVAS
+FECHA: 31 DE AGOSTO DE 2026
+MATERIA: Actualiza instrucciones sobre mecanismos de impugnación administrativa.
+"""
+
+
+def test_detecta_identidad_aunque_el_bloque_este_al_final():
+    identidad = ef.detectar_identidad(PAGINA_1)
+    assert identidad["tipo"] == "circular"
+    assert identidad["numero"] == "35"
+    assert identidad["fecha_documento"] == "31 de agosto de 2026"
+    assert ef.derivar_anio(identidad["fecha_documento"]) == 2026
+    assert "impugnación administrativa" in identidad["materia"]
+
+def test_detecta_resolucion_exenta():
+    identidad = ef.detectar_identidad("RESOLUCIÓN EXENTA SII N° 112.-\nFECHA: 4 DE MARZO DE 2025")
+    assert identidad["tipo"] == "resolucion"
+    assert identidad["numero"] == "112"
+
+def test_detecta_oficio():
+    identidad = ef.detectar_identidad("OFICIO N° 1408.-\nFECHA: 10 DE JULIO DE 2024")
+    assert identidad["tipo"] == "oficio"
+    assert identidad["numero"] == "1408"
+
+def test_campos_no_detectados_quedan_en_none():
+    identidad = ef.detectar_identidad("Un texto cualquiera sin bloque identificatorio.")
+    assert identidad["tipo"] is None
+    assert identidad["numero"] is None
+    assert identidad["fecha_documento"] is None
+
+def test_anio_no_es_un_campo_de_identidad():
+    """El año no se detecta ni se pide: se deriva de la fecha."""
+    assert "anio" not in ef.CAMPOS_DE_IDENTIDAD
+    assert "anio" not in ef.detectar_identidad(PAGINA_1)
+
+def test_el_anio_no_se_infiere_del_reloj():
+    identidad = ef.detectar_identidad("CIRCULAR N°12.-\nsin línea de fecha")
+    assert ef.derivar_anio(identidad["fecha_documento"]) is None
+
+def test_el_anio_no_se_infiere_del_nombre_del_archivo():
+    fuente = ef.construir_fuente(
+        paginas=["CIRCULAR N°12.-"],
+        origen={"clase": "pdf", "ruta": "circular-12-de-2019.pdf"},
+        identidad=ef.detectar_identidad("CIRCULAR N°12.-"),
+    )
+    assert fuente["anio"] is None
+
+def test_el_anio_siempre_deriva_de_la_fecha():
+    identidad = ef.detectar_identidad("CIRCULAR N°12.-\nFECHA: 2 DE ENERO DE 2025")
+    fuente = ef.construir_fuente(
+        paginas=["x"], origen={"clase": "pdf", "ruta": "x.pdf"}, identidad=identidad)
+    assert fuente["anio"] == 2025
+
+def test_parsear_fecha_canoniza_las_formas_admitidas():
+    assert ef.parsear_fecha("31 de agosto de 2026") == "31 de agosto de 2026"
+    assert ef.parsear_fecha("31/08/2026") == "31 de agosto de 2026"
+    assert ef.parsear_fecha("31-08-2026") == "31 de agosto de 2026"
+    assert ef.parsear_fecha("4 de Marzo de 2025") == "4 de marzo de 2025"
+    assert ef.parsear_fecha("1 de setiembre de 2025") == "1 de septiembre de 2025"
+
+def test_parsear_fecha_rechaza_lo_que_no_existe_en_el_calendario():
+    assert ef.parsear_fecha("31 de febrero de 2026") is None
+    assert ef.parsear_fecha("30 de febrero de 2024") is None
+    assert ef.parsear_fecha("32/01/2026") is None
+
+def test_parsear_fecha_rechaza_texto_libre():
+    assert ef.parsear_fecha("mañana 2026") is None
+    assert ef.parsear_fecha("agosto de 2026") is None
+    assert ef.parsear_fecha("") is None
+    assert ef.parsear_fecha(None) is None
+
+def test_fecha_de_usuario_invalida_se_rechaza():
+    """Un string libre no puede convertirse en identidad válida."""
+    identidad = ef.detectar_identidad("sin bloque identificatorio")
+    with pytest.raises(ValueError) as error:
+        ef.completar_identidad(identidad, {"fecha_documento": "mañana 2026"})
+    assert "fecha_documento" in str(error.value)
+
+def test_fecha_de_usuario_inexistente_se_rechaza():
+    identidad = ef.detectar_identidad("sin bloque identificatorio")
+    with pytest.raises(ValueError):
+        ef.completar_identidad(identidad, {"fecha_documento": "31 de febrero de 2026"})
+
+def test_fecha_de_usuario_se_guarda_canonizada():
+    identidad = ef.detectar_identidad("sin bloque identificatorio")
+    completada = ef.completar_identidad(identidad, {"fecha_documento": "31/08/2026"})
+    assert completada["fecha_documento"] == "31 de agosto de 2026"
+
+def test_numero_de_usuario_debe_ser_digitos():
+    identidad = ef.detectar_identidad("sin bloque identificatorio")
+    with pytest.raises(ValueError) as error:
+        ef.completar_identidad(identidad, {"numero": "treinta y cinco"})
+    assert "numero" in str(error.value)
+
+def test_tipo_de_usuario_debe_estar_en_el_catalogo():
+    identidad = ef.detectar_identidad("sin bloque identificatorio")
+    with pytest.raises(ValueError):
+        ef.completar_identidad(identidad, {"tipo": "instructivo"})
+
+def test_nunca_hay_fecha_valida_con_anio_nulo():
+    """Si hay fecha en fuente.json, el año derivado existe."""
+    identidad = ef.detectar_identidad(PAGINA_1)
+    fuente = ef.construir_fuente(
+        paginas=[PAGINA_1], origen={"clase": "pdf", "ruta": "x.pdf"}, identidad=identidad)
+    assert (fuente["fecha_documento"] is None) == (fuente["anio"] is None)
+    assert fuente["anio"] == 2026
+
+def test_anio_no_se_acepta_como_input_del_usuario():
+    """El estado 'fecha de 2025 con año 2026' no debe ser representable."""
+    identidad = ef.detectar_identidad("sin bloque identificatorio")
+    with pytest.raises(ValueError) as error:
+        ef.completar_identidad(identidad, {"fecha_documento": "2 de enero de 2025",
+                                           "anio": 2026})
+    assert "anio" in str(error.value)
+
+def test_anio_aportado_por_el_usuario_se_deriva_de_su_fecha():
+    identidad = ef.detectar_identidad("sin bloque identificatorio")
+    completada = ef.completar_identidad(
+        identidad, {"tipo": "circular", "numero": "40",
+                    "fecha_documento": "2 de enero de 2025"})
+    fuente = ef.construir_fuente(
+        paginas=["x"], origen={"clase": "pdf", "ruta": "x.pdf"}, identidad=completada)
+    assert fuente["anio"] == 2025
+    assert fuente["procedencia_campos"]["anio"] == "derivado"
+
+def test_construir_fuente_arma_paginas_y_normalizaciones():
+    fuente = ef.construir_fuente(
+        paginas=["CIRCULAR N°35.-\nFECHA: 31 DE AGOSTO DE 2026", "noventa días hábiles"],
+        origen={"clase": "pdf", "ruta": "circu35.pdf"},
+        identidad=ef.detectar_identidad(PAGINA_1),
+    )
+    assert fuente["metricas"]["paginas"] == 2
+    assert fuente["paginas"][1]["n"] == 2
+    assert "noventadíashábiles" in fuente["paginas_normalizadas"][1]["texto"]
+    assert "noventadíashábiles" in fuente["texto_normalizado"]
+
+def test_procedencia_campos_marca_lo_detectado():
+    fuente = ef.construir_fuente(
+        paginas=[PAGINA_1],
+        origen={"clase": "pdf", "ruta": "circu35.pdf"},
+        identidad=ef.detectar_identidad(PAGINA_1),
+    )
+    assert fuente["procedencia_campos"]["numero"] == "detectado"
+    assert fuente["procedencia_campos"]["fecha_documento"] == "detectado"
+    assert fuente["procedencia_campos"]["anio"] == "derivado"
+
+def test_procedencia_campos_marca_lo_aportado_por_el_usuario():
+    identidad = ef.detectar_identidad("texto sin bloque identificatorio")
+    identidad_completada = ef.completar_identidad(
+        identidad, {"tipo": "circular", "numero": "40",
+                    "fecha_documento": "2 de enero de 2026"})
+    fuente = ef.construir_fuente(
+        paginas=["texto sin bloque identificatorio"],
+        origen={"clase": "pdf", "ruta": "x.pdf"},
+        identidad=identidad_completada,
+    )
+    assert fuente["procedencia_campos"]["numero"] == "usuario"
+    assert fuente["numero"] == "40"
+
+def test_identidad_incompleta_aborta():
+    identidad = ef.detectar_identidad("texto sin bloque identificatorio")
+    with pytest.raises(ef.IdentidadIncompleta) as error:
+        ef.exigir_identidad_completa(identidad)
+    assert "numero" in str(error.value)
