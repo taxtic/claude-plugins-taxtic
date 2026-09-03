@@ -8,7 +8,7 @@ Garantiza procedencia y coherencia de literales, NO equivalencia semántica entr
 la paráfrasis y la cita, ni fidelidad de la extracción del PDF. Por eso el
 respaldo de citas es un paso de revisión obligatorio antes de enviar.
 """
-import importlib.util as _il, os as _os
+import importlib.util as _il, os as _os, re as _re
 
 def _cargar_vecino(nombre):
     ruta = _os.path.join(_os.path.dirname(__file__), nombre + ".py")
@@ -36,6 +36,15 @@ class PaginaInvalida(GateRechazado): ...
 class LiteralSinRespaldo(GateRechazado): ...
 class DerivadaConDato(GateRechazado): ...
 class SuplenciaFaltante(GateRechazado): ...
+
+
+class VariosRechazos(GateRechazado):
+    """Todos los rechazos de una corrida, para corregirlos de una vez."""
+
+    def __init__(self, rechazos):
+        self.rechazos = list(rechazos)
+        detalle = "\n".join(f"  [{type(r).__name__}] {r}" for r in self.rechazos)
+        super().__init__("secciones", f"{len(self.rechazos)} rechazos:\n{detalle}")
 
 
 # El criterio son 40 caracteres NORMALIZADOS, así que vive acá y no en el
@@ -101,16 +110,35 @@ def _comprobar_afirmacion(objeto, fuente, ruta, filas):
                       "ruta": ruta})
 
 
-def _comprobar_derivada(objeto, ruta):
+def _comprobar_derivada(objeto, ruta, filas):
     encontrados = literales.extraer(extraer_fuente.normalizar_lectura(objeto["texto"]))
     if encontrados:
         raise DerivadaConDato(
             ruta, "una recomendación no puede introducir datos verificables ("
                   + ", ".join(sorted(encontrados))
                   + "); separa el hecho como afirmación citada")
+    # Entra al respaldo con la cita vacía. Es criterio profesional, no una
+    # afirmación sobre el documento, y es lo único del entregable sin respaldo
+    # textual: ocultarlo dejaba ciego al contador justo donde el gate no puede
+    # ayudarlo, que son las dos únicas secciones sin cita.
+    filas.append({"texto": objeto["texto"], "cita": "", "pagina": "",
+                  "ruta": ruta})
 
 
-def _recorrer_bloque(bloque, id_seccion, fuente, ruta, filas):
+def _acumular(rechazos, comprobar, *argumentos):
+    """Corre una comprobación y guarda el rechazo en vez de cortar el recorrido.
+
+    Un resumen real tiene cien afirmaciones. Detenerse en la primera obliga a
+    quien redacta a una vuelta completa por cada error, y el gate se vuelve el
+    cuello de botella del trabajo en vez de una revisión.
+    """
+    try:
+        comprobar(*argumentos)
+    except GateRechazado as rechazo:
+        rechazos.append(rechazo)
+
+
+def _recorrer_bloque(bloque, fuente, ruta, filas, rechazos):
     tipo = bloque["tipo"]
     if tipo == "subtitulo":
         return
@@ -120,25 +148,27 @@ def _recorrer_bloque(bloque, id_seccion, fuente, ruta, filas):
         for i, item in enumerate(bloque["items"]):
             ruta_item = f"{ruta}.items[{i}]"
             if derivada:
-                _comprobar_derivada(item, ruta_item)
+                _acumular(rechazos, _comprobar_derivada, item, ruta_item, filas)
             else:
-                _comprobar_afirmacion(item, fuente, ruta_item, filas)
+                _acumular(rechazos, _comprobar_afirmacion, item, fuente, ruta_item, filas)
         return
 
     if tipo == "tabla":
         for i, celda in enumerate(bloque["encabezado"]):
             if celda.get("texto", "").strip():
-                _comprobar_afirmacion(celda, fuente, f"{ruta}.encabezado[{i}]", filas)
+                _acumular(rechazos, _comprobar_afirmacion, celda, fuente,
+                          f"{ruta}.encabezado[{i}]", filas)
         for f, fila in enumerate(bloque["filas"]):
             for c, celda in enumerate(fila):
                 if celda.get("texto", "").strip():
-                    _comprobar_afirmacion(celda, fuente, f"{ruta}.filas[{f}][{c}]", filas)
+                    _acumular(rechazos, _comprobar_afirmacion, celda, fuente,
+                              f"{ruta}.filas[{f}][{c}]", filas)
         return
 
     if derivada:
-        _comprobar_derivada(bloque, ruta)
+        _acumular(rechazos, _comprobar_derivada, bloque, ruta, filas)
     else:
-        _comprobar_afirmacion(bloque, fuente, ruta, filas)
+        _acumular(rechazos, _comprobar_afirmacion, bloque, fuente, ruta, filas)
 
 
 def verificar(resumen, fuente):
@@ -152,19 +182,34 @@ def verificar(resumen, fuente):
             raise SuplenciaFaltante(error.ruta, error.motivo) from error
         raise
 
-    filas = []
+    filas, rechazos = [], []
     for s, seccion in enumerate(resumen["secciones"]):
         ruta_seccion = f"secciones[{s}]"
         if seccion["id"] == "materia":
-            titulo = seccion["titulo"]
-            _comprobar_afirmacion(titulo, fuente, f"{ruta_seccion}.titulo", filas)
+            _acumular(rechazos, _comprobar_afirmacion, seccion["titulo"], fuente,
+                      f"{ruta_seccion}.titulo", filas)
         for b, bloque in enumerate(seccion["bloques"]):
-            _recorrer_bloque(bloque, seccion["id"], fuente,
-                             f"{ruta_seccion}.bloques[{b}]", filas)
+            _recorrer_bloque(bloque, fuente, f"{ruta_seccion}.bloques[{b}]",
+                             filas, rechazos)
+    if rechazos:
+        raise rechazos[0] if len(rechazos) == 1 else VariosRechazos(rechazos)
     return filas
 
 
-def escribir_respaldo(filas, fuente, salida):
+_RE_ESPACIOS_DEL_RESPALDO = _re.compile(r"\s+")
+
+
+def _para_celda(texto):
+    """Deja el texto apto para una celda de tabla Markdown.
+
+    Un salto de línea dentro de una celda corta la tabla ahí mismo, y todas las
+    filas siguientes quedan fuera de ella: el revisor deja de ver el resto de
+    las afirmaciones sin que nada se lo señale.
+    """
+    return _RE_ESPACIOS_DEL_RESPALDO.sub(" ", texto).replace("|", "\\|").strip()
+
+
+def escribir_respaldo(filas, fuente, salida, elaborado_por=None):
     """Emite el respaldo de citas que revisa el contador. No se entrega al cliente."""
     lineas = [
         "# Respaldo de citas",
@@ -183,11 +228,16 @@ def escribir_respaldo(filas, fuente, salida):
     for campo, origen in sorted(fuente.get("procedencia_campos", {}).items()):
         marca = " ⚠️ aportado por el usuario" if origen == "usuario" else ""
         lineas.append(f"| `{campo}` | {origen}{marca} |")
+    if elaborado_por:
+        # Es el único texto que llega al documento sin pasar por el gate, así
+        # que si no aparece acá nadie lo revisa.
+        lineas.append(
+            f"| `elaborado_por` | usuario ⚠️ {_para_celda(elaborado_por)} |")
     lineas += ["", "## Afirmaciones y respaldo", "",
                "| Ubicación | Afirmación | Cita | Página |", "|---|---|---|---|"]
     for fila in filas:
-        texto = fila["texto"].replace("|", "\\|")
-        cita = fila["cita"].replace("|", "\\|")
+        texto = _para_celda(fila["texto"])
+        cita = _para_celda(fila["cita"]) or "_criterio profesional, sin cita_"
         lineas.append(f"| `{fila['ruta']}` | {texto} | {cita} | {fila['pagina']} |")
     with open(salida, "w", encoding="utf-8") as archivo:
         archivo.write("\n".join(lineas) + "\n")
@@ -212,7 +262,8 @@ def _main():
         print(f"RECHAZADO [{type(error).__name__}] {error}")
         sys.exit(1)
 
-    escribir_respaldo(filas, fuente, argumentos.respaldo)
+    escribir_respaldo(filas, fuente, argumentos.respaldo,
+                      resumen.get("meta", {}).get("elaborado_por"))
     print(f"OK: {len(filas)} afirmaciones respaldadas. Respaldo en {argumentos.respaldo}")
 
 

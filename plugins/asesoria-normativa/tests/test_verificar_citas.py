@@ -201,3 +201,51 @@ def test_respaldo_incluye_procedencia_de_los_campos(tmp_path):
     contenido = salida.read_text(encoding="utf-8")
     assert "numero" in contenido and "usuario" in contenido
     assert "no se entrega al cliente" in contenido
+
+
+def test_una_corrida_reporta_todos_los_rechazos(tmp_path):
+    """Detenerse en el primero obliga a una vuelta completa por cada error, y
+    un resumen real tiene cien afirmaciones."""
+    def mutar(r):
+        r["secciones"][0]["bloques"][0]["texto"] = (
+            "El SII debe pronunciarse dentro de 30 días hábiles administrativos.")
+        r["secciones"][0]["bloques"].append({
+            "tipo": "parrafo", "afirmacion": "citada",
+            "texto": "El plazo es de 45 días hábiles administrativos.",
+            "cita": "deberá pronunciarse dentro del plazo de noventa (90) días hábiles administrativos",
+            "pagina": 1})
+    with pytest.raises(vc.VariosRechazos) as e:
+        vc.verificar(_con(mutar), FUENTE)
+    assert len(e.value.rechazos) == 2
+    assert "30d" in str(e.value) and "45d" in str(e.value)
+
+def test_el_criterio_profesional_aparece_en_el_respaldo(tmp_path):
+    """Es lo único del entregable sin respaldo textual: si no está en el
+    artefacto de revisión, nadie lo revisa."""
+    filas = vc.verificar(RESUMEN, FUENTE)
+    salida = tmp_path / "respaldo.md"
+    vc.escribir_respaldo(filas, FUENTE, str(salida))
+    contenido = salida.read_text(encoding="utf-8")
+    assert "Revisar los expedientes en curso del estudio." in contenido
+    assert "criterio profesional, sin cita" in contenido
+
+def test_un_salto_de_linea_no_rompe_la_tabla_del_respaldo(tmp_path):
+    """Una celda con salto corta la tabla ahí, y todas las filas siguientes
+    quedan fuera sin que nada lo señale."""
+    def mutar(r):
+        r["secciones"][0]["bloques"][0]["cita"] = (
+            "deberá pronunciarse dentro del plazo\nde noventa (90) días hábiles administrativos")
+    filas = vc.verificar(_con(mutar), FUENTE)
+    salida = tmp_path / "respaldo.md"
+    vc.escribir_respaldo(filas, FUENTE, str(salida))
+    cuerpo = salida.read_text(encoding="utf-8").split("## Afirmaciones y respaldo")[1]
+    for linea in cuerpo.strip().splitlines():
+        assert not linea.strip() or linea.lstrip().startswith("|")
+
+def test_el_nombre_del_firmante_queda_trazado(tmp_path):
+    """No pasa por el gate: si no aparece acá, nadie lo revisa."""
+    filas = vc.verificar(RESUMEN, FUENTE)
+    salida = tmp_path / "respaldo.md"
+    vc.escribir_respaldo(filas, FUENTE, str(salida), "Asesor Tributario")
+    contenido = salida.read_text(encoding="utf-8")
+    assert "elaborado_por" in contenido and "Asesor Tributario" in contenido

@@ -411,15 +411,38 @@ def _main():
                             help='formato "31 de agosto de 2026"')
     argumentos = analizador.parse_args()
 
-    if argumentos.entrada.lower().startswith(("http://", "https://")):
-        ruta = os.path.join(tempfile.gettempdir(), "documento-sii.pdf")
-        descargar_pdf(argumentos.entrada, ruta)
-        origen = {"clase": "url", "url": argumentos.entrada}
-    else:
-        ruta = argumentos.entrada
-        origen = {"clase": "pdf", "ruta": argumentos.entrada}
-
-    paginas = leer_pdf(ruta)
+    # Quien usa esto es un contador sin experiencia de terminal: un traceback
+    # de pypdf o de urllib no le dice qué hacer. Cada fallo previsible sale
+    # como una línea que nombra la causa y, cuando la hay, la salida.
+    try:
+        if argumentos.entrada.lower().startswith(("http://", "https://")):
+            ruta = os.path.join(tempfile.gettempdir(), "documento-sii.pdf")
+            descargar_pdf(argumentos.entrada, ruta)
+            origen = {"clase": "url", "url": argumentos.entrada}
+        else:
+            ruta = argumentos.entrada
+            origen = {"clase": "pdf", "ruta": argumentos.entrada}
+        paginas = leer_pdf(ruta)
+    except UrlRechazada as error:
+        print(f"URL RECHAZADA: {error}")
+        print("Solo se acepta https sobre sii.cl y el documento debe ser un PDF. "
+              "Si está publicado en HTML, guárdalo a PDF y pasa el archivo.")
+        sys.exit(1)
+    except PdfSinTexto as error:
+        print(f"PDF SIN TEXTO: {error}")
+        sys.exit(1)
+    except FileNotFoundError:
+        print(f"NO SE ENCONTRÓ EL ARCHIVO: {argumentos.entrada}")
+        sys.exit(1)
+    except ModuleNotFoundError as error:
+        print(f"FALTA UNA DEPENDENCIA: {error.name}")
+        print("Instálalas con: pip install -r requirements.txt")
+        sys.exit(1)
+    except Exception as error:
+        print(f"NO SE PUDO LEER EL DOCUMENTO: {type(error).__name__}: {error}")
+        print("Si el PDF está cifrado, protegido o dañado, ábrelo en un visor y "
+              "vuelve a guardarlo antes de reintentar.")
+        sys.exit(1)
     identidad = detectar_identidad(paginas[0])
     aportado = {campo: getattr(argumentos, campo)
                 for campo in CAMPOS_DE_IDENTIDAD
