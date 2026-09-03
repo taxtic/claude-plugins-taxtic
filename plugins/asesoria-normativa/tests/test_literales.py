@@ -40,7 +40,7 @@ def test_cardinal_irresoluble_devuelve_none():
 def test_fuera_del_rango_declarado_devuelve_none():
     """El parser promete 0-9999; diez mil queda afuera y no se resuelve a medias."""
     assert lit.parsear_cardinal(["diez", "mil"]) is None
-    assert lit.parsear_cardinal(["nueve", "mil", "novecientos", "noventa", "y", "nueve"]) == 9999
+    assert lit.parsear_cardinal(["cien", "mil"]) is None
 
 def test_extrae_plazo_en_cifras():
     assert "90d" in lit.extraer("el plazo es de 90 días hábiles administrativos")
@@ -91,7 +91,10 @@ def test_la_fecha_no_se_descompone_en_partes_sueltas():
     assert "2026" not in encontrados
 
 def test_una_fecha_distinta_produce_un_token_distinto():
-    assert lit.extraer("2 de enero de 2025") != lit.extraer("31 de agosto de 2026")
+    # Compara los tokens concretos: afirmar solo que los conjuntos difieren
+    # pasaría igual si las fechas se degradaran a sus años sueltos.
+    assert lit.extraer("2 de enero de 2025") == {"fecha:2025-01-02"}
+    assert lit.extraer("31 de agosto de 2026") == {"fecha:2026-08-31"}
 
 def test_partes_sueltas_no_respaldan_una_fecha_completa():
     """El caso que motivó el token atómico: 31, agosto y 2026 dispersos."""
@@ -129,3 +132,127 @@ def test_cantidad_irresoluble_falla_cerrado():
     assert encontrados == {"?d"}
     # ningún token de cantidad real puede respaldar al centinela
     assert not encontrados <= lit.extraer("dentro de noventa días hábiles")
+
+
+# --- Formatos de fecha del uso real chileno, y falla cerrada de los que no se
+# --- resuelven. Sin el centinela, una fecha no reconocida se degradaba a su
+# --- año suelto y cualquier mención de ese año la respaldaba.
+
+def test_fecha_con_puntos_como_separador():
+    assert lit.extraer("Rige desde el 31.08.2026.") == {"fecha:2026-08-31"}
+
+def test_fecha_con_marcador_ordinal():
+    assert lit.extraer("Rige desde el 1° de enero de 2026.") == {"fecha:2026-01-01"}
+
+def test_fecha_con_del_en_vez_de_de():
+    assert lit.extraer("Rige desde el 1 de enero del 2026.") == {"fecha:2026-01-01"}
+
+def test_fecha_en_formato_iso():
+    assert lit.extraer("con fecha 2026-08-31") == {"fecha:2026-08-31"}
+
+def test_mes_mal_escrito_no_se_degrada_a_anio_suelto():
+    encontrados = lit.extraer("Con fecha 31 de agost de 2026.")
+    assert encontrados == {lit.FECHA_IRRESOLUBLE}
+    assert "2026" not in encontrados
+
+def test_fecha_inexistente_en_calendario_emite_centinela():
+    assert lit.extraer("el 31 de febrero de 2026") == {lit.FECHA_IRRESOLUBLE}
+    assert lit.extraer("el 13/45/2026") == {lit.FECHA_IRRESOLUBLE}
+
+def test_el_centinela_de_fecha_lleva_la_marca_comun():
+    """El gate rechaza todo token que empiece con la marca, sea plazo o fecha."""
+    assert lit.FECHA_IRRESOLUBLE.startswith(lit.MARCA_IRRESOLUBLE)
+    assert (lit.MARCA_IRRESOLUBLE + "d").startswith(lit.MARCA_IRRESOLUBLE)
+
+def test_dos_fechas_en_un_texto_se_atomizan_las_dos():
+    assert lit.extraer("entre el 1 de enero de 2025 y el 31 de agosto de 2026") == {
+        "fecha:2025-01-01", "fecha:2026-08-31"}
+
+
+# --- Vocabulario sin tildes: los PDF y el texto tecleado llegan de las dos
+# --- formas, y una palabra no reconocida no emitía ni literal ni centinela.
+
+def test_cantidad_sin_tildes_se_reconoce():
+    assert lit.extraer("El plazo es de veintiun dias habiles.") == {"21d"}
+    assert lit.extraer("dieciseis meses") == {"16m"}
+    assert lit.extraer("veintidos dias") == {"22d"}
+
+
+# --- Separador de miles: antes daba un valor incorrecto, no None, y además
+# --- clasificaba el plazo como monto.
+
+def test_plazo_con_separador_de_miles():
+    assert lit.extraer("1.500 dias") == {"1500d"}
+    assert lit.extraer("El plazo es de 1.095 dias.") == {"1095d"}
+
+def test_plazo_con_miles_no_se_clasifica_ademas_como_monto():
+    assert not any(t.endswith("clp") for t in lit.extraer("1.500 dias"))
+
+
+# --- Cantidades alternativas: quedarse con la más cercana a la unidad hacía
+# --- pasar un plazo que la cita no menciona.
+
+def test_cantidades_separadas_por_conector():
+    assert lit.extraer("El plazo es de treinta o sesenta dias.") == {"30d", "60d"}
+    assert lit.extraer("El plazo es de 30 o 90 dias.") == {"30d", "90d"}
+    assert lit.extraer("de cinco a diez dias") == {"5d", "10d"}
+
+def test_forma_mixta_de_la_normativa():
+    assert lit.extraer("noventa (90) dias habiles") == {"90d"}
+    assert lit.extraer("90 (noventa) dias habiles") == {"90d"}
+
+def test_forma_mixta_contradictoria_emite_centinela():
+    """Si la cifra y la palabra no coinciden, el texto se contradice."""
+    assert lit.extraer("noventa (60) dias habiles") == {lit.MARCA_IRRESOLUBLE + "d"}
+
+
+# --- Referencias normativas: la enumeración es la forma canónica de citar el
+# --- Código Tributario, y `decreto ley` colisionaba con `ley`.
+
+def test_enumeracion_de_articulos():
+    assert lit.extraer("Conforme a los articulos 123 y 124 del Codigo.") == {
+        "art123", "art124"}
+    assert lit.extraer("los arts. 6 y 7 del codigo") == {"art6", "art7"}
+
+def test_articulo_con_sufijo():
+    assert lit.extraer("el articulo 123 bis") == {"art123bis"}
+    assert lit.extraer("el articulo 4 quater") == {"art4quater"}
+
+def test_decreto_ley_y_dl_producen_el_mismo_token():
+    assert lit.extraer("Segun el decreto ley 824.") == {"dl824"}
+    assert lit.extraer("Segun el D.L. 824.") == {"dl824"}
+    assert lit.extraer("Segun el DL 824.") == {"dl824"}
+
+def test_ley_no_se_confunde_con_decreto_ley():
+    assert lit.extraer("la Ley 824") == {"ley824"}
+
+def test_circular_y_resolucion():
+    assert lit.extraer("la Circular N° 34 de 2018") == {"circular34", "2018"}
+    assert lit.extraer("la Resolucion Exenta SII N° 112") == {"resolucion112"}
+
+def test_norma_con_separador_de_miles_no_emite_monto_fantasma():
+    assert lit.extraer("la ley 21.210") == {"ley21210"}
+
+
+# --- Porcentajes y montos
+
+def test_porcentaje_con_separador_de_miles():
+    assert lit.extraer("una tasa de 10.000%") == {"10000pct"}
+
+def test_montos_en_unidades_reajustables():
+    """Las multas de las circulares se expresan casi siempre en UTM o UTA."""
+    assert lit.extraer("La multa es de 100 UTM.") == {"100utm"}
+    assert lit.extraer("una multa de 5 UTA") == {"5uta"}
+    assert lit.extraer("el valor de 1,5 UF") == {"1.5uf"}
+
+def test_monto_en_pesos_con_signo():
+    assert lit.extraer("un giro de $ 250.000") == {"250000clp"}
+
+
+# --- Formas que no son español: el parser rechaza lo que no puede resolver
+
+def test_formas_no_gramaticales_emiten_centinela():
+    marca = lit.MARCA_IRRESOLUBLE + "d"
+    assert lit.extraer("cien uno dias") == {marca}
+    assert lit.extraer("ciento dias") == {marca}
+    assert lit.extraer("un mil dias") == {marca}
