@@ -216,3 +216,131 @@ def test_identidad_incompleta_aborta():
     with pytest.raises(ef.IdentidadIncompleta) as error:
         ef.exigir_identidad_completa(identidad)
     assert "numero" in str(error.value)
+
+import pytest
+
+def test_url_https_de_sii_aceptada():
+    url = "https://www.sii.cl/normativa_legislacion/circulares/2026/circu35.pdf"
+    assert ef.validar_url(url) == url
+
+def test_url_http_rechazada():
+    with pytest.raises(ef.UrlRechazada) as error:
+        ef.validar_url("http://www.sii.cl/circu35.pdf")
+    assert "https" in str(error.value).lower()
+
+def test_url_de_otro_dominio_rechazada():
+    with pytest.raises(ef.UrlRechazada) as error:
+        ef.validar_url("https://ejemplo.com/circu35.pdf")
+    assert "ejemplo.com" in str(error.value)
+
+def test_subdominio_de_sii_aceptado():
+    assert ef.validar_url("https://homer.sii.cl/doc.pdf")
+
+def test_dominio_que_termina_parecido_rechazado():
+    # "notsii.cl" no es subdominio de sii.cl
+    with pytest.raises(ef.UrlRechazada):
+        ef.validar_url("https://notsii.cl/doc.pdf")
+
+def test_redirect_fuera_del_dominio_rechazado():
+    with pytest.raises(ef.UrlRechazada) as error:
+        ef.validar_salto("https://www.sii.cl/a.pdf", "https://cdn-externo.com/a.pdf")
+    assert "cdn-externo.com" in str(error.value)
+
+def test_redirect_dentro_del_dominio_aceptado():
+    assert ef.validar_salto("https://www.sii.cl/a.pdf", "https://www.sii.cl/b.pdf")
+
+def test_respuesta_html_rechazada():
+    with pytest.raises(ef.UrlRechazada) as error:
+        ef.exigir_pdf("text/html; charset=utf-8")
+    assert "pdf" in str(error.value).lower()
+
+def test_respuesta_pdf_aceptada():
+    assert ef.exigir_pdf("application/pdf")
+
+import email.message, urllib.error
+
+
+class _RespuestaFalsa:
+    def __init__(self, cuerpo, content_type="application/pdf"):
+        self._cuerpo = cuerpo
+        self.headers = {"Content-Type": content_type}
+    def read(self): return self._cuerpo
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+class _AbridorFalso:
+    """Registra CADA URL que se intenta abrir: el test falla si toca un host externo."""
+    def __init__(self, guion):
+        self.guion = guion          # url -> ("redirect", destino) | ("ok", cuerpo)
+        self.visitadas = []
+
+    def open(self, url):
+        self.visitadas.append(url)
+        accion, valor = self.guion[url]
+        if accion == "redirect":
+            cabeceras = email.message.Message()
+            cabeceras["Location"] = valor
+            raise urllib.error.HTTPError(url, 302, "Found", cabeceras, None)
+        return _RespuestaFalsa(valor)
+
+
+def test_redirect_dentro_del_dominio_se_sigue(tmp_path):
+    abridor = _AbridorFalso({
+        "https://www.sii.cl/a.pdf": ("redirect", "https://www.sii.cl/b.pdf"),
+        "https://www.sii.cl/b.pdf": ("ok", b"%PDF-1.4"),
+    })
+    destino = str(tmp_path / "d.pdf")
+    ef.descargar_pdf("https://www.sii.cl/a.pdf", destino, abridor=abridor)
+    assert abridor.visitadas == ["https://www.sii.cl/a.pdf", "https://www.sii.cl/b.pdf"]
+
+def test_el_host_externo_nunca_se_abre(tmp_path):
+    """La validación ocurre ANTES de seguir el salto, no después de haberlo hecho."""
+    abridor = _AbridorFalso({
+        "https://www.sii.cl/a.pdf": ("redirect", "https://cdn-externo.com/a.pdf"),
+        "https://cdn-externo.com/a.pdf": ("ok", b"%PDF-1.4"),
+    })
+    with pytest.raises(ef.UrlRechazada):
+        ef.descargar_pdf("https://www.sii.cl/a.pdf", str(tmp_path / "d.pdf"),
+                         abridor=abridor)
+    assert "https://cdn-externo.com/a.pdf" not in abridor.visitadas
+
+def test_redirect_relativo_se_resuelve_y_se_valida(tmp_path):
+    abridor = _AbridorFalso({
+        "https://www.sii.cl/docs/a.pdf": ("redirect", "/otros/b.pdf"),
+        "https://www.sii.cl/otros/b.pdf": ("ok", b"%PDF-1.4"),
+    })
+    ef.descargar_pdf("https://www.sii.cl/docs/a.pdf", str(tmp_path / "d.pdf"),
+                     abridor=abridor)
+    assert abridor.visitadas[-1] == "https://www.sii.cl/otros/b.pdf"
+
+def test_cadena_de_redirects_demasiado_larga(tmp_path):
+    guion = {f"https://www.sii.cl/{i}.pdf": ("redirect", f"https://www.sii.cl/{i + 1}.pdf")
+             for i in range(10)}
+    abridor = _AbridorFalso(guion)
+    with pytest.raises(ef.UrlRechazada) as error:
+        ef.descargar_pdf("https://www.sii.cl/0.pdf", str(tmp_path / "d.pdf"),
+                         abridor=abridor)
+    assert "redirects" in str(error.value)
+    assert len(abridor.visitadas) == ef.MAXIMO_DE_SALTOS + 1
+
+def test_respuesta_html_tras_redirect_valido_se_rechaza(tmp_path):
+    class _AbridorHtml(_AbridorFalso):
+        def open(self, url):
+            self.visitadas.append(url)
+            return _RespuestaFalsa(b"<html>", content_type="text/html")
+    abridor = _AbridorHtml({})
+    with pytest.raises(ef.UrlRechazada):
+        ef.descargar_pdf("https://www.sii.cl/a.pdf", str(tmp_path / "d.pdf"),
+                         abridor=abridor)
+
+def test_pdf_sin_capa_de_texto_aborta(tmp_path, monkeypatch):
+    class PaginaVacia:
+        def extract_text(self):
+            return ""
+    class LectorFalso:
+        pages = [PaginaVacia(), PaginaVacia()]
+    monkeypatch.setitem(__import__("sys").modules, "pypdf",
+                        type("m", (), {"PdfReader": lambda ruta: LectorFalso()}))
+    with pytest.raises(ef.PdfSinTexto):
+        ef.leer_pdf("cualquiera.pdf")

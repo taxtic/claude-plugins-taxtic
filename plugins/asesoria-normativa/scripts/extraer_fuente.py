@@ -206,3 +206,166 @@ def construir_fuente(paginas, origen, identidad):
             {"n": i, "texto": normalizar_matching(t)} for i, t in enumerate(paginas, 1)
         ],
     }
+
+
+from urllib.parse import urlparse
+
+DOMINIO_PERMITIDO = "sii.cl"
+MAXIMO_DE_SALTOS = 3
+
+
+class UrlRechazada(Exception):
+    """La URL no cumple las guardas de esquema, dominio o tipo de contenido."""
+
+
+class PdfSinTexto(Exception):
+    """El PDF no trae capa de texto: probablemente es un escaneo."""
+
+
+def _host_permitido(host):
+    host = (host or "").lower().split(":")[0]
+    return host == DOMINIO_PERMITIDO or host.endswith("." + DOMINIO_PERMITIDO)
+
+
+def validar_url(url):
+    """Acepta solo https sobre sii.cl o un subdominio."""
+    partes = urlparse(url)
+    if partes.scheme != "https":
+        raise UrlRechazada(f"solo se acepta https, se recibió '{partes.scheme}'")
+    if not _host_permitido(partes.hostname):
+        raise UrlRechazada(f"host fuera del dominio permitido: {partes.hostname}")
+    return url
+
+
+def validar_salto(url_origen, url_destino):
+    """Revalida el host en cada redirect: un sii.cl que sale del dominio se rechaza."""
+    partes = urlparse(url_destino)
+    if partes.scheme != "https" or not _host_permitido(partes.hostname):
+        raise UrlRechazada(
+            f"el redirect desde {urlparse(url_origen).hostname} apunta a "
+            f"{partes.hostname}, fuera del dominio permitido")
+    return url_destino
+
+
+def exigir_pdf(content_type):
+    """Solo se procesa PDF. Un documento publicado en HTML se guarda a PDF primero."""
+    if "application/pdf" not in (content_type or "").lower():
+        raise UrlRechazada(
+            f"la URL respondió '{content_type}' y solo se acepta application/pdf")
+    return True
+
+
+def leer_pdf(ruta):
+    """Texto por página. Aborta si el PDF no tiene capa de texto."""
+    from pypdf import PdfReader
+    lector = PdfReader(ruta)
+    paginas = [(p.extract_text() or "") for p in lector.pages]
+    if not any(p.strip() for p in paginas):
+        raise PdfSinTexto(
+            f"'{ruta}' no tiene texto extraíble; si es un escaneo, no se procesa")
+    return paginas
+
+
+def construir_abridor():
+    """Abridor HTTP que NO sigue redirects por su cuenta.
+
+    urlopen() los sigue solo: para cuando se puede mirar la URL final, la
+    petición al host de destino ya se hizo. Acá cada 3xx vuelve como HTTPError,
+    se valida el Location y recién entonces se hace la petición siguiente.
+    """
+    import urllib.request
+
+    class _SinSeguirRedirects(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    return urllib.request.build_opener(_SinSeguirRedirects)
+
+
+CODIGOS_DE_REDIRECT = (301, 302, 303, 307, 308)
+
+
+def descargar_pdf(url, destino, abridor=None):
+    """Descarga validando cada salto ANTES de seguirlo."""
+    import urllib.error
+    from urllib.parse import urljoin
+    abridor = abridor or construir_abridor()
+    actual = validar_url(url)
+
+    for _ in range(MAXIMO_DE_SALTOS + 1):
+        try:
+            respuesta = abridor.open(actual)
+        except urllib.error.HTTPError as error:
+            if error.code not in CODIGOS_DE_REDIRECT:
+                raise
+            ubicacion = error.headers.get("Location") if error.headers else None
+            if not ubicacion:
+                raise UrlRechazada(f"redirect {error.code} sin Location desde {actual}")
+            # valida antes de tocar el destino; si no pasa, no se hace la petición
+            actual = validar_salto(actual, urljoin(actual, ubicacion))
+            continue
+        with respuesta:
+            exigir_pdf(respuesta.headers.get("Content-Type"))
+            with open(destino, "wb") as archivo:
+                archivo.write(respuesta.read())
+        return destino
+
+    raise UrlRechazada(
+        f"más de {MAXIMO_DE_SALTOS} redirects desde {url}; se aborta la descarga")
+
+
+_FLAG_DE_CAMPO = {"tipo": "--tipo", "numero": "--numero",
+                  "fecha_documento": "--fecha-documento"}
+
+
+def _main():
+    import argparse, json, sys, tempfile, os
+    analizador = argparse.ArgumentParser(
+        description="Extrae un documento normativo del SII a fuente.json")
+    analizador.add_argument("entrada", help="ruta a un PDF local o URL https de sii.cl")
+    analizador.add_argument("--out", default="fuente.json")
+    # Campos de identidad, solo para la segunda pasada cuando la detección falla.
+    # No hay --anio: el año se deriva de la fecha.
+    analizador.add_argument("--tipo", choices=("circular", "resolucion", "oficio"))
+    analizador.add_argument("--numero")
+    analizador.add_argument("--fecha-documento", dest="fecha_documento",
+                            help='formato "31 de agosto de 2026"')
+    argumentos = analizador.parse_args()
+
+    if argumentos.entrada.lower().startswith(("http://", "https://")):
+        ruta = os.path.join(tempfile.gettempdir(), "documento-sii.pdf")
+        descargar_pdf(argumentos.entrada, ruta)
+        origen = {"clase": "url", "url": argumentos.entrada}
+    else:
+        ruta = argumentos.entrada
+        origen = {"clase": "pdf", "ruta": argumentos.entrada}
+
+    paginas = leer_pdf(ruta)
+    identidad = detectar_identidad(paginas[0])
+    aportado = {campo: getattr(argumentos, campo)
+                for campo in CAMPOS_DE_IDENTIDAD
+                if getattr(argumentos, campo, None)}
+    if aportado:
+        try:
+            identidad = completar_identidad(identidad, aportado)
+        except ValueError as error:
+            print(f"IDENTIDAD INVÁLIDA: {error}")
+            sys.exit(2)
+
+    faltantes = [c for c in CAMPOS_DE_IDENTIDAD if identidad.get(c) is None]
+    fuente = construir_fuente(paginas, origen, identidad)
+    with open(argumentos.out, "w", encoding="utf-8") as archivo:
+        json.dump(fuente, archivo, ensure_ascii=False, indent=2)
+
+    print(f"{argumentos.out}: {fuente['metricas']['paginas']} páginas, "
+          f"{fuente['metricas']['caracteres']} caracteres")
+    if faltantes:
+        print("CAMPOS DE IDENTIDAD SIN DETECTAR: " + ", ".join(faltantes))
+        print("Pregúntaselos al usuario y vuelve a correr agregando: "
+              + " ".join(f'{_FLAG_DE_CAMPO[c]} "..."' for c in faltantes))
+        print("No se infieren del reloj, del nombre del archivo ni de la URL.")
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    _main()
