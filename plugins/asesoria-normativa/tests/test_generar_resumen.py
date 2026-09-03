@@ -273,3 +273,16 @@ def test_el_builder_no_pisa_un_documento_existente(tmp_path):
     existente.write_bytes(b"version anterior del contador")
     assert gr._ruta_sin_pisar(str(existente)) == str(tmp_path / "resumen-2.docx")
     assert existente.read_bytes() == b"version anterior del contador"
+
+
+def test_el_bloque_nota_se_renderiza(tmp_path):
+    """Toda su ruta estaba sin cubrir: existe en el catálogo, el esquema y el
+    builder, y ningún test lo tocaba."""
+    import copy
+    resumen = copy.deepcopy(RESUMEN)
+    resumen["secciones"][1]["bloques"].append({
+        "tipo": "nota", "afirmacion": "citada",
+        "texto": "CT = Código Tributario.", "cita": "n" * 45, "pagina": 1})
+    salida = str(tmp_path / "r.docx")
+    gr.construir_docx(FUENTE, resumen, salida)
+    assert any("CT = Código Tributario." in t for t in _textos(docx.Document(salida)))

@@ -35,7 +35,9 @@ def exportar(ruta_docx):
         word = win32com.client.DispatchEx("Word.Application")
         word.Visible = False
         word.DisplayAlerts = 0
-        documento = word.Documents.Open(os.path.abspath(ruta_docx))
+        # ReadOnly evita que la instancia invisible quede esperando si el
+        # usuario tiene el mismo archivo abierto en su propio Word.
+        documento = word.Documents.Open(os.path.abspath(ruta_docx), ReadOnly=True)
         documento.SaveAs(destino, FileFormat=FORMATO_PDF)
         documento.Close(SIN_GUARDAR_CAMBIOS)
         return {"pdf": destino, "aviso": None}

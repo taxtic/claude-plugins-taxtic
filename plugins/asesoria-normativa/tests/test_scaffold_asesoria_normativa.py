@@ -9,6 +9,16 @@ def test_plugin_json_valido():
     assert manifiesto["name"] == "asesoria-normativa"
     assert manifiesto["version"] == "0.2.0"
 
+def test_la_version_del_readme_coincide_con_el_manifiesto():
+    """Tres superficies declaran la versión y el README era la única sin test."""
+    import re
+    ruta = os.path.join(RAIZ_PLUGIN, ".claude-plugin", "plugin.json")
+    with open(ruta, encoding="utf-8") as f:
+        version = json.load(f)["version"]
+    with open(os.path.join(RAIZ_PLUGIN, "README.md"), encoding="utf-8") as f:
+        readme = f.read()
+    assert re.search(r"^" + re.escape(version) + r"\s*$", readme, re.M), version
+
 def test_assets_de_marca_presentes_y_no_vacios():
     for nombre in ("imagotipo-principal-negro.png", "isologo-naranjo.png", "marca.md"):
         ruta = os.path.join(RAIZ_PLUGIN, "assets", nombre)

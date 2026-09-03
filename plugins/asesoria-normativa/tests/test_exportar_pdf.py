@@ -11,7 +11,9 @@ ep = _cargar("exportar_pdf")
 
 
 class _DocumentoFalso:
-    def __init__(self, registro): self._registro = registro
+    def __init__(self, registro, opciones=None):
+        self._registro = registro
+        registro.append(("abrir", tuple(sorted((opciones or {}).items()))))
     def SaveAs(self, ruta, FileFormat=None): self._registro.append(("guardar", ruta))
     def Close(self, *a, **k): self._registro.append(("cerrar",))
 
@@ -21,7 +23,8 @@ class _WordFalso:
         self._registro = registro
         self.Visible = True
         self.DisplayAlerts = True
-        self.Documents = types.SimpleNamespace(Open=lambda ruta: _DocumentoFalso(registro))
+        self.Documents = types.SimpleNamespace(
+            Open=lambda ruta, **opciones: _DocumentoFalso(registro, opciones))
     def Quit(self, *a): self._registro.append(("salir",) + tuple(a))
 
 
@@ -96,3 +99,15 @@ def test_un_archivo_que_no_es_de_word_no_se_convierte(tmp_path, monkeypatch):
         assert resultado["pdf"] is None, nombre
         assert "Word" in resultado["aviso"]
     assert registro == []  # ni siquiera se arranca Word
+
+
+def test_el_documento_se_abre_en_solo_lectura(tmp_path, monkeypatch):
+    """Si el usuario tiene el mismo archivo abierto, una instancia invisible que
+    lo pide en escritura queda esperando una respuesta que nadie puede dar."""
+    registro = []
+    _instalar_word(monkeypatch, registro)
+    docx = tmp_path / "resumen.docx"
+    docx.write_bytes(b"x")
+    ep.exportar(str(docx))
+    apertura = next(e for e in registro if e[0] == "abrir")
+    assert ("ReadOnly", True) in apertura[1]

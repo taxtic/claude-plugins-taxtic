@@ -404,7 +404,7 @@ _FLAG_DE_CAMPO = {"tipo": "--tipo", "numero": "--numero",
 
 
 def _main():
-    import argparse, json, sys, tempfile, os
+    import argparse, importlib.util, json, sys, tempfile, os
     analizador = argparse.ArgumentParser(
         description="Extrae un documento normativo del SII a fuente.json")
     analizador.add_argument("entrada", help="ruta a un PDF local o URL https de sii.cl")
@@ -417,12 +417,25 @@ def _main():
                             help='formato "31 de agosto de 2026"')
     argumentos = analizador.parse_args()
 
+    # Las tres dependencias se comprueban acá, en el primer comando, aunque
+    # python-docx recién haga falta en el tercero: descubrir a mitad del
+    # trabajo que falta una librería obliga a rehacer la redacción entera.
+    faltan = [nombre for modulo, nombre in
+              (("pypdf", "pypdf"), ("docx", "python-docx"))
+              if importlib.util.find_spec(modulo) is None]
+    if faltan:
+        print("FALTAN DEPENDENCIAS: " + ", ".join(faltan))
+        print("Instálalas con: pip install -r requirements.txt")
+        sys.exit(1)
+
     # Quien usa esto es un contador sin experiencia de terminal: un traceback
     # de pypdf o de urllib no le dice qué hacer. Cada fallo previsible sale
     # como una línea que nombra la causa y, cuando la hay, la salida.
     try:
         if argumentos.entrada.lower().startswith(("http://", "https://")):
-            ruta = os.path.join(tempfile.gettempdir(), "documento-sii.pdf")
+            # Nombre único: dos corridas seguidas pisaban el PDF anterior.
+            descriptor, ruta = tempfile.mkstemp(prefix="documento-sii-", suffix=".pdf")
+            os.close(descriptor)
             descargar_pdf(argumentos.entrada, ruta)
             origen = {"clase": "url", "url": argumentos.entrada}
         else:
@@ -468,10 +481,10 @@ def _main():
     except IdentidadIncompleta:
         faltantes = [c for c in CAMPOS_DE_IDENTIDAD if identidad.get(c) is None]
         print("CAMPOS DE IDENTIDAD SIN DETECTAR: " + ", ".join(faltantes))
-        print("Preguntaselos al usuario y vuelve a correr agregando: "
+        print("Pregúntaselos al usuario y vuelve a correr agregando: "
               + " ".join(f'{_FLAG_DE_CAMPO[c]} "..."' for c in faltantes))
         print("No se infieren del reloj, del nombre del archivo ni de la URL.")
-        print(f"No se escribio {argumentos.out}.")
+        print(f"No se escribió {argumentos.out}.")
         sys.exit(2)
 
     fuente = construir_fuente(paginas, origen, identidad)
