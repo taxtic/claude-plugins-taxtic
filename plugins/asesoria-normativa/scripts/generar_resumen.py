@@ -224,7 +224,7 @@ def construir_docx(fuente, resumen, salida):
         partes.append(f"Fecha del documento: {fuente['fecha_documento']}")
     if resumen.get("meta", {}).get("elaborado_por"):
         partes.append(f"Elaborado por {resumen['meta']['elaborado_por']}")
-    partes.append("Taxtic Asesoría Tributaria Integral")
+    partes.append("TAXTIC Asesoría Tributaria Integral")
     metadata = documento.add_paragraph()
     metadata.paragraph_format.space_after = Pt(10)
     _escribir(metadata, " · ".join(partes), tamano=8, color=GRIS_TEXTO)
