@@ -114,6 +114,92 @@ def test_materia_exige_los_dos_puntos():
 def test_materia_ausente_queda_en_none():
     assert ef.detectar_identidad("CIRCULAR N°40.-")["materia"] is None
 
+def test_materia_corta_ante_la_siguiente_etiqueta_del_recuadro():
+    """Sin el corte, la referencia legal queda pegada a la bajada del documento."""
+    pagina = ("CIRCULAR N°35.-\n"
+              "MATERIA: Actualiza instrucciones sobre \n"
+              "mecanismos de impugnación administrativa: \n"
+              "RAV, RAF y Recurso Jerárquico. \n"
+              "REF. LEGAL: Artículos 123 bis y 124 del Código Tributario.\n")
+    materia = ef.detectar_identidad(pagina)["materia"]
+    assert materia.startswith("Actualiza instrucciones sobre mecanismos")
+    assert "RAV, RAF y Recurso Jerárquico" in materia
+    assert "REF. LEGAL" not in materia
+
+def test_el_cuerpo_no_gana_sobre_el_recuadro_identificatorio():
+    """La página cita normas anteriores antes de llegar al recuadro; quedarse
+    con la primera aparición fabrica una identidad plausible y falsa."""
+    pagina = ("La presente circular reemplaza la Circular N° 12, de 2019, y\n"
+              "complementa la Resolución Exenta SII N° 112, de 2020.\n"
+              "Con fecha 15 de enero de 2018 este Servicio impartió instrucciones.\n"
+              "CIRCULAR N°35.-\n"
+              "FECHA: 31 DE AGOSTO DE 2026\n")
+    identidad = ef.detectar_identidad(pagina)
+    assert identidad["tipo"] == "circular"
+    assert identidad["numero"] == "35"
+    assert identidad["fecha_documento"] == "31 de agosto de 2026"
+
+def test_sin_recuadro_no_se_inventa_identidad():
+    """Es preferible pedirle los datos al usuario que fabricar un número a
+    partir de una cita del cuerpo."""
+    pagina = ("Lo dispuesto en la Circular N° 12 de 2019 se mantiene vigente,\n"
+              "conforme a la Resolución Exenta SII N° 112 de 2020.\n")
+    identidad = ef.detectar_identidad(pagina)
+    assert identidad["tipo"] is None
+    assert identidad["numero"] is None
+
+def test_la_fecha_del_recuadro_gana_sobre_la_del_cuerpo():
+    pagina = ("Con fecha 15 de enero de 2018 este Servicio impartió instrucciones.\n"
+              "CIRCULAR N°35.-\nFECHA: 31 DE AGOSTO DE 2026\n")
+    assert ef.detectar_identidad(pagina)["fecha_documento"] == "31 de agosto de 2026"
+
+def test_la_fecha_exige_los_dos_puntos():
+    pagina = "CIRCULAR N°35.-\ncon fecha 15 de enero de 2018 se instruyó lo anterior\n"
+    assert ef.detectar_identidad(pagina)["fecha_documento"] is None
+
+def test_el_valor_del_usuario_corrige_la_deteccion():
+    """Si la detección se equivocó, los flags existen para corregirla. Descartar
+    el valor del usuario dejaría el dato malo marcado como 'detectado'."""
+    detectada = {"tipo": "circular", "numero": "41",
+                 "fecha_documento": None, "materia": None}
+    completada = ef.completar_identidad(detectada, {"numero": "35"})
+    assert completada["numero"] == "35"
+    fuente = ef.construir_fuente(
+        ["x"], {"clase": "pdf", "ruta": "x.pdf"}, completada)
+    assert fuente["numero"] == "35"
+    assert fuente["procedencia_campos"]["numero"] == "usuario"
+
+def test_construir_fuente_no_lee_el_anio_de_la_identidad():
+    """La derivación es la única vía, aunque la identidad traiga la clave."""
+    identidad = {"tipo": "circular", "numero": "35", "materia": None,
+                 "fecha_documento": "2 de enero de 2025", "anio": 2026}
+    fuente = ef.construir_fuente(
+        ["x"], {"clase": "pdf", "ruta": "x.pdf"}, identidad)
+    assert fuente["anio"] == 2025
+
+def test_parsear_fecha_esta_anclada():
+    """Sin anclas deja de ser la única puerta: extraería una fecha de una frase."""
+    assert ef.parsear_fecha("ver circular 12 del 31/08/2026 y siguientes") is None
+    assert ef.parsear_fecha("x31 de agosto de 2026") is None
+
+def test_parsear_fecha_con_mes_inexistente_no_revienta():
+    assert ef.parsear_fecha("31 de brumario de 2026") is None
+
+def test_url_con_userinfo_rechazada():
+    """https://sii.cl@malo.com/ es el clásico para saltarse un chequeo de host."""
+    with pytest.raises(ef.UrlRechazada):
+        ef.validar_url("https://www.sii.cl@malo.com/doc.pdf")
+
+def test_redirect_a_http_dentro_del_dominio_rechazado():
+    with pytest.raises(ef.UrlRechazada):
+        ef.validar_salto("https://www.sii.cl/a.pdf", "http://www.sii.cl/b.pdf")
+
+def test_content_type_se_compara_por_media_type():
+    """Buscar la subcadena en la cabecera completa acepta un HTML con
+    'application/pdf' en un parámetro."""
+    with pytest.raises(ef.UrlRechazada):
+        ef.exigir_pdf("text/html; x=application/pdf")
+
 def test_detecta_resolucion_exenta():
     identidad = ef.detectar_identidad("RESOLUCIÓN EXENTA SII N° 112.-\nFECHA: 4 DE MARZO DE 2025")
     assert identidad["tipo"] == "resolucion"

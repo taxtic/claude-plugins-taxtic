@@ -77,18 +77,52 @@ _PATRONES_DE_TIPO = (
     ("circular", re.compile(r"circular\s*n[°º]?\s*(\d+)", re.I)),
 )
 _RE_FECHA_EN_BLOQUE = re.compile(
-    r"fecha\s*:?\s*(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+(?:19|20)\d{2})", re.I)
+    r"fecha\s*:\s*(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+(?:19|20)\d{2})", re.I)
 _RE_FECHA_PALABRAS = re.compile(
     r"^\s*(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+((?:19|20)\d{2})\s*$", re.I)
 _RE_FECHA_NUMERICA = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-]((?:19|20)\d{2})\s*$")
+# El SII cierra el numero del recuadro con ".-".
+_RE_CIERRE_IDENTIFICATORIO = re.compile(r"\s*\.\-")
 _RE_NUMERO = re.compile(r"^\d{1,6}$")
 # Los dos puntos son obligatorios: sin ellos engancha cualquier mención de
 # la palabra en el cuerpo, y esa cadena termina siendo la bajada del documento.
-_RE_MATERIA = re.compile(r"materia\s*:\s*(.+?)(?:\n\s*\n|\Z)", re.I | re.S)
+# Corta en la línea en blanco o en la siguiente etiqueta del recuadro
+# ("REF. LEGAL:"), que si no queda pegada a la bajada del documento. La etiqueta
+# se compara con sensibilidad a mayúsculas: bajo re.I la clase [A-ZÁÉÍÓÚ]
+# también acepta minúsculas y cortaría en cualquier frase con dos puntos.
+_RE_MATERIA = re.compile(
+    r"materia\s*:\s*(.+?)"
+    r"(?:\n\s*\n|\n\s*(?-i:[A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚ\s.]{2,}:)|\Z)", re.I | re.S)
 
 
 class IdentidadIncompleta(Exception):
     """Falta un campo de identidad y el usuario no lo aportó."""
+
+
+def _elegir_identificatorio(texto_pagina_1):
+    """Elige el tipo y número del recuadro identificatorio, no del cuerpo.
+
+    La página cita normas anteriores antes de llegar al recuadro, y quedarse con
+    la primera aparición fabrica una identidad completa y plausible a partir de
+    una referencia ajena: una circular que menciona "Resolución Exenta SII N° 112"
+    en su introducción se identificaría como esa resolución.
+
+    La señal es que el SII cierra el número del recuadro con ".-", marca que una
+    cita del cuerpo no lleva. **Solo cuentan los candidatos con esa marca.** Si
+    ninguno la tiene se devuelve None y la skill le pregunta los datos al
+    usuario: quedarse con una cita cualquiera del cuerpo produciría una
+    identidad completa, plausible y falsa, que es peor que no detectar nada.
+    """
+    candidatos = [
+        (encontrado.end(), tipo, encontrado.group(1))
+        for tipo, patron in _PATRONES_DE_TIPO
+        for encontrado in patron.finditer(texto_pagina_1)
+        if _RE_CIERRE_IDENTIFICATORIO.match(texto_pagina_1, encontrado.end())
+    ]
+    if not candidatos:
+        return None
+    _, tipo, numero = max(candidatos, key=lambda c: c[0])
+    return tipo, numero
 
 
 def parsear_fecha(texto):
@@ -148,17 +182,17 @@ def detectar_identidad(texto_pagina_1):
     """
     identidad = {"tipo": None, "numero": None, "fecha_documento": None, "materia": None}
 
-    for tipo, patron in _PATRONES_DE_TIPO:
-        encontrado = patron.search(texto_pagina_1)
-        if encontrado:
-            identidad["tipo"] = tipo
-            identidad["numero"] = encontrado.group(1)
-            break
+    elegido = _elegir_identificatorio(texto_pagina_1)
+    if elegido:
+        identidad["tipo"], identidad["numero"] = elegido
 
-    fecha = _RE_FECHA_EN_BLOQUE.search(texto_pagina_1)
-    if fecha:
+    # Se toma la última: el cuerpo suele citar fechas de normas anteriores
+    # ("con fecha 15 de enero de 2018 este Servicio impartió...") y el recuadro
+    # va después. Los dos puntos son obligatorios por la misma razón.
+    fechas = list(_RE_FECHA_EN_BLOQUE.finditer(texto_pagina_1))
+    if fechas:
         # misma validación que para la fecha aportada por el usuario
-        identidad["fecha_documento"] = parsear_fecha(fecha.group(1))
+        identidad["fecha_documento"] = parsear_fecha(fechas[-1].group(1))
 
     materia = _RE_MATERIA.search(texto_pagina_1)
     if materia:
@@ -176,7 +210,14 @@ def derivar_anio(fecha_documento):
 
 
 def completar_identidad(identidad, aportado_por_usuario):
-    """Rellena los campos ausentes con lo que aportó el contador, marcándolos."""
+    """Incorpora lo que aportó el contador, marcando su procedencia.
+
+    Lo que el usuario aporta **manda sobre lo detectado**. Si la detección se
+    equivocó, corregirla es justamente para lo que existen los flags; descartar
+    el valor del usuario en silencio dejaría el dato equivocado en el archivo y,
+    peor, marcado como "detectado" — es decir, `procedencia_campos` afirmando
+    que salió del documento.
+    """
     if "anio" in aportado_por_usuario:
         raise ValueError(
             "'anio' no se aporta: se deriva de 'fecha_documento'. Pasa la fecha.")
@@ -191,9 +232,8 @@ def completar_identidad(identidad, aportado_por_usuario):
             raise ValueError(
                 f"'{campo}' inválido: {valor!r}. Formato esperado: "
                 f"{_FORMATOS_ESPERADOS[campo]}")
-        if completada.get(campo) is None:
-            completada[campo] = canonico
-            origen[campo] = "usuario"
+        completada[campo] = canonico
+        origen[campo] = "usuario"
     completada["_origen"] = origen
     return completada
 
@@ -274,8 +314,14 @@ def validar_salto(url_origen, url_destino):
 
 
 def exigir_pdf(content_type):
-    """Solo se procesa PDF. Un documento publicado en HTML se guarda a PDF primero."""
-    if "application/pdf" not in (content_type or "").lower():
+    """Solo se procesa PDF. Un documento publicado en HTML se guarda a PDF primero.
+
+    Se compara el media type, no la cabecera completa: buscar la subcadena
+    aceptaría un `text/html; x=application/pdf`, y el archivo guardado sería
+    HTML con extensión .pdf.
+    """
+    media_type = (content_type or "").split(";")[0].strip().lower()
+    if media_type != "application/pdf":
         raise UrlRechazada(
             f"la URL respondió '{content_type}' y solo se acepta application/pdf")
     return True
@@ -378,19 +424,25 @@ def _main():
             print(f"IDENTIDAD INVÁLIDA: {error}")
             sys.exit(2)
 
-    faltantes = [c for c in CAMPOS_DE_IDENTIDAD if identidad.get(c) is None]
+    # El archivo se escribe solo con la identidad completa. Escribirlo igual
+    # dejaria un fuente.json a medias en disco, y una fase siguiente que no
+    # mire el codigo de salida arrancaria sobre el.
+    try:
+        exigir_identidad_completa(identidad)
+    except IdentidadIncompleta:
+        faltantes = [c for c in CAMPOS_DE_IDENTIDAD if identidad.get(c) is None]
+        print("CAMPOS DE IDENTIDAD SIN DETECTAR: " + ", ".join(faltantes))
+        print("Preguntaselos al usuario y vuelve a correr agregando: "
+              + " ".join(f'{_FLAG_DE_CAMPO[c]} "..."' for c in faltantes))
+        print("No se infieren del reloj, del nombre del archivo ni de la URL.")
+        print(f"No se escribio {argumentos.out}.")
+        sys.exit(2)
+
     fuente = construir_fuente(paginas, origen, identidad)
     with open(argumentos.out, "w", encoding="utf-8") as archivo:
         json.dump(fuente, archivo, ensure_ascii=False, indent=2)
-
-    print(f"{argumentos.out}: {fuente['metricas']['paginas']} páginas, "
+    print(f"{argumentos.out}: {fuente['metricas']['paginas']} paginas, "
           f"{fuente['metricas']['caracteres']} caracteres")
-    if faltantes:
-        print("CAMPOS DE IDENTIDAD SIN DETECTAR: " + ", ".join(faltantes))
-        print("Pregúntaselos al usuario y vuelve a correr agregando: "
-              + " ".join(f'{_FLAG_DE_CAMPO[c]} "..."' for c in faltantes))
-        print("No se infieren del reloj, del nombre del archivo ni de la URL.")
-        sys.exit(2)
 
 
 if __name__ == "__main__":
